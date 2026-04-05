@@ -30,6 +30,8 @@ Version  : 0.1.0
     ──▶ asyncio.Queue[ParsedAttackEvent] (STIXConverter)
 """
 
+from __future__ import annotations
+
 import asyncio
 import time
 from collections import defaultdict
@@ -84,14 +86,24 @@ class AttackEventParser:
 
     def __init__(
         self,
-        input_queue: asyncio.Queue,
-        output_queue: asyncio.Queue,
+        input_queue: asyncio.Queue | None = None,
+        output_queue: asyncio.Queue | None = None,
     ) -> None:
         self._input_q  = input_queue
         self._output_q = output_queue
         self._mapper   = get_mapper()
         # session_id → _SessionAccumulator
         self._sessions: dict[str, _SessionAccumulator] = {}
+
+    def parse(self, event: MavlinkCaptureEvent) -> ParsedAttackEvent:
+        """
+        [ROLE] 외부 호출용 공개 파싱 인터페이스.
+               _classify_event()의 public wrapper.
+
+        [DATA FLOW]
+            MavlinkCaptureEvent ──▶ _classify_event() ──▶ ParsedAttackEvent
+        """
+        return self._classify_event(event)
 
     async def run(self) -> None:
         """

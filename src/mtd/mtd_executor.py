@@ -81,10 +81,12 @@ class MTDExecutor:
         action_queue: asyncio.Queue,
         result_queue: asyncio.Queue,
         instances: dict[str, HoneyDroneInstance],
+        drone_manager: object | None = None,
     ) -> None:
-        self._action_q  = action_queue
-        self._result_q  = result_queue
-        self._instances = instances  # drone_id → HoneyDroneInstance (shared ref)
+        self._action_q      = action_queue
+        self._result_q      = result_queue
+        self._instances     = instances  # drone_id → HoneyDroneInstance (shared ref)
+        self._drone_manager = drone_manager  # HoneyDroneManager (optional, for SERVICE_MIGRATE)
         try:
             self._client = docker.from_env()
         except DockerException as e:
@@ -187,6 +189,16 @@ class MTDExecutor:
             f"-j REDIRECT --to-port {new_port}"
         )
         await self._docker_exec(cc_name, cmd)
+
+        # MAVLink Router 재시작 — iptables 규칙만으로는 불충분, 프로세스 리로드 필요
+        reload_cmd = (
+            "sh -c 'kill -HUP $(pgrep mavlink-router) 2>/dev/null "
+            "|| supervisorctl restart mavlink-router 2>/dev/null || true'"
+        )
+        try:
+            await self._docker_exec(cc_name, reload_cmd)
+        except RuntimeError:
+            logger.debug("mavlink-router reload skipped (not running)", cc=cc_name)
 
         return MTDResult(
             action_id=action.action_id,
@@ -340,24 +352,44 @@ class MTDExecutor:
     async def _exec_service_migrate(self, action: MTDAction) -> MTDResult:
         """
         [ROLE] CC 서비스를 완전히 새 컨테이너로 마이그레이션.
-               HoneyDroneManager.rotate()를 직접 호출하는 대신
-               외부 Manager에게 위임 신호를 생성.
-               실제 rotate는 HoneyDroneManager에서 수행.
+               HoneyDroneManager.rotate()가 있으면 직접 호출,
+               없으면 위임 신호만 생성.
 
         [DATA FLOW]
-            MTDResult(migrate_requested=True) ──▶ 외부에서 rotate() 호출
+            drone_manager.rotate(drone_id) ──▶ 새 컨테이너 ──▶ MTDResult
+            (drone_manager 없으면 migrate_requested=True 신호만)
         """
+        if _DRY_RUN:
+            return self._dry_result(action, new_surface={"migrate_requested": True})
+
         logger.info(
             "service_migrate_requested",
             drone_id=action.target_drone_id,
             urgency=action.urgency,
         )
+
+        migrated = False
+        if self._drone_manager is not None and hasattr(self._drone_manager, "rotate"):
+            try:
+                await self._drone_manager.rotate(action.target_drone_id)
+                migrated = True
+                logger.info(
+                    "service_migrate_completed",
+                    drone_id=action.target_drone_id,
+                )
+            except Exception as e:
+                logger.error(
+                    "service_migrate_failed",
+                    drone_id=action.target_drone_id,
+                    error=str(e),
+                )
+
         return MTDResult(
             action_id=action.action_id,
             action_type=action.action_type,
             target_drone_id=action.target_drone_id,
-            success=True,
-            new_surface={"migrate_requested": True},
+            success=migrated or (self._drone_manager is None),
+            new_surface={"migrate_requested": True, "migrated": migrated},
         )
 
     # ── 헬퍼 ─────────────────────────────────────────────────────────────────

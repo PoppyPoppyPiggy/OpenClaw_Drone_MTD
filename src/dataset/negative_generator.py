@@ -130,19 +130,34 @@ class NegativeGenerator:
     ) -> list[DatasetEntry]:
         """
         [ROLE] n_samples 개의 음성 DatasetEntry 생성.
+               method="sitl" 시 실제 DVD SITL 트래픽 캡처 (가장 높은 과학적 타당성).
+               method="scenario" 시 비행 시나리오 기반 생성.
+               method="synthetic" 시 통계적 분포 기반 합성 (fallback).
 
         [DATA FLOW]
-            n_samples ──▶ scenario 반복 시뮬레이션
+            n_samples ──▶ sitl / scenario / synthetic 선택
             ──▶ list[DatasetEntry](label=0)
             ──▶ 파일 저장
         """
         _NEGATIVE_DIR.mkdir(parents=True, exist_ok=True)
         entries: list[DatasetEntry] = []
 
-        if method == "synthetic":
-            entries = self._generate_synthetic(n_samples, drone_id)
+        if method == "sitl":
+            entries = await self._generate_from_sitl_log(n_samples, drone_id)
         elif method == "scenario":
             entries = await self._generate_from_scenarios(n_samples, drone_id)
+
+        # fallback: SITL / scenario 결과가 부족하면 synthetic으로 보충
+        if len(entries) < n_samples:
+            remaining = n_samples - len(entries)
+            fallback_method = "synthetic" if method != "synthetic" else method
+            if method == "sitl" and len(entries) < n_samples:
+                logger.info(
+                    "sitl_capture_insufficient_falling_back",
+                    captured=len(entries),
+                    needed=remaining,
+                )
+            entries.extend(self._generate_synthetic(remaining, drone_id))
 
         self._generated.extend(entries)
 
@@ -211,6 +226,68 @@ class NegativeGenerator:
                 confidence     = 1.0,
                 source         = "synthetic",
             ))
+        return entries
+
+    async def _generate_from_sitl_log(
+        self, n_samples: int, drone_id: str
+    ) -> list[DatasetEntry]:
+        """
+        [ROLE] DVD SITL에서 실제 MAVLink 트래픽을 캡처하여 음성 샘플 생성.
+               pymavlink mavutil.mavlink_connection()으로 정상 비행 트래픽 수집.
+               CRC/시퀀스 번호가 포함된 진짜 MAVLink 프레임 사용.
+
+        [DATA FLOW]
+            SITL UDP :14550 ──▶ pymavlink connection
+            ──▶ 60초 수신 ──▶ DatasetEntry(label=0, source="sitl_capture")
+        """
+        import os
+        sitl_port = int(os.environ.get("MAVLINK_PORT_BASE", "14550"))
+        sitl_host = os.environ.get("CTI_API_HOST", "127.0.0.1")
+        entries: list[DatasetEntry] = []
+
+        try:
+            from pymavlink import mavutil as _mavutil
+
+            conn_str = f"udp:{sitl_host}:{sitl_port + 1}"
+            logger.info("sitl_capture_start", conn=conn_str, max_samples=n_samples)
+
+            mav = _mavutil.mavlink_connection(conn_str, input=True, source_system=255)
+
+            deadline = time.time() + 60.0  # 최대 60초 캡처
+            while len(entries) < n_samples and time.time() < deadline:
+                msg = mav.recv_match(blocking=True, timeout=2.0)
+                if msg is None:
+                    continue
+
+                msg_type = msg.get_type()
+                if msg_type == "BAD_DATA":
+                    continue
+
+                raw_bytes = msg.get_msgbuf()
+                entries.append(DatasetEntry(
+                    timestamp_ns   = time.time_ns(),
+                    drone_id       = drone_id,
+                    src_ip         = sitl_host,
+                    protocol       = DroneProtocol.MAVLINK,
+                    msg_type       = msg_type,
+                    payload_hex    = raw_bytes.hex() if raw_bytes else "",
+                    attacker_level = None,
+                    ttp_ids        = [],
+                    stix_bundle_id = "",
+                    label          = 0,
+                    confidence     = 1.0,
+                    source         = "sitl_capture",
+                ))
+
+            mav.close()
+            logger.info("sitl_capture_done", captured=len(entries))
+
+        except Exception as e:
+            logger.warning(
+                "sitl_capture_failed_falling_back_to_synthetic",
+                error=str(e),
+            )
+
         return entries
 
     async def _generate_from_scenarios(

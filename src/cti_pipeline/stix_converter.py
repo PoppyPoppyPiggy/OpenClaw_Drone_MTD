@@ -109,7 +109,8 @@ class STIXConverter:
             observed_data,
             note,
         ]
-        bundle = stix2.Bundle(objects=objects, spec_version="2.1")
+        # stix2 v21 module infers spec_version; allow_custom for x_mirage_* props
+        bundle = stix2.Bundle(objects=objects, allow_custom=True)
         logger.debug(
             "stix_bundle_created",
             bundle_id=bundle.id,
@@ -145,7 +146,7 @@ class STIXConverter:
 
         bundle = stix2.Bundle(
             objects=list(all_objects.values()),
-            spec_version="2.1",
+            allow_custom=True,
         )
         logger.info(
             "stix_batch_bundle_created",
@@ -225,11 +226,12 @@ class STIXConverter:
         msg_type = event.raw_event.msg_type
         src_ip   = event.raw_event.src_ip
 
-        # STIX pattern: 네트워크 트래픽 기반
+        # STIX 2.1 compliant pattern (§9.3 STIX Patterning)
+        # References use STIX Cyber-observable Object properties directly
         pattern = (
-            f"[network-traffic:src_ref.type = 'ipv4-addr' AND "
-            f"network-traffic:src_ref.value = '{src_ip}' AND "
-            f"network-traffic:dst_port = {event.raw_event.src_port}]"
+            f"[ipv4-addr:value = '{src_ip}'] AND "
+            f"[network-traffic:dst_port = {event.raw_event.src_port} AND "
+            f"network-traffic:protocols[0] = '{proto}']"
         )
 
         return stix2.Indicator(
@@ -276,13 +278,14 @@ class STIXConverter:
                 "x_mirage_msg_type"   : event.raw_event.msg_type,
             },
         )
+        # STIX 2.1 §5.7: object_refs MUST include ALL referenced SCOs
         return stix2.ObservedData(
             created=ts,
             modified=ts,
             first_observed=ts,
             last_observed=ts,
             number_observed=1,
-            object_refs=[net_traffic.id],
+            object_refs=[ipv4_src.id, net_traffic.id],
         )
 
     def _build_note(

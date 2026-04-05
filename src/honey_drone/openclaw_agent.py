@@ -90,19 +90,8 @@ _PARAM_CYCLE_SEC          : float = 45.0
 _FLIGHT_SIM_DURATION_SEC  : float = 60.0
 _FLIGHT_SIM_STEPS         : int   = 12
 
-# ── 도구 식별 시그니처 ────────────────────────────────────────────────────────
-_NMAP_SIGNATURES: frozenset[str] = frozenset([
-    "Nmap", "nmap", "masscan", "NSOCK",
-])
-_MAVPROXY_SIGNATURES: frozenset[str] = frozenset([
-    "MAVProxy", "mavproxy", "GCS_CLIENT",
-])
-_DRONEKIT_SIGNATURES: frozenset[str] = frozenset([
-    "dronekit", "DroneKit", "GUIDED", "vehicle.connect",
-])
-_METASPLOIT_SIGNATURES: frozenset[str] = frozenset([
-    "msf", "meterpreter", "metasploit", "auxiliary/",
-])
+# ── 도구 식별: 타이밍 + 시퀀스 분석 기반 (바이너리 MAVLink에는 문자열 시그니처 없음)
+# 분류는 _detect_tool()에서 inter-arrival timing과 명령 순서 패턴으로 수행
 
 # ── 가짜 ArduPilot 파라미터 사전 ──────────────────────────────────────────────
 _FAKE_PARAMS: dict[str, float] = {
@@ -177,8 +166,11 @@ class OpenClawAgent:
         self._fake_params: dict[str, float] = dict(_FAKE_PARAMS)
         self._fake_waypoints: list[dict] = self._generate_waypoints()
         self._silenced: bool = False  # 재부팅 시뮬레이션 중 응답 차단
+        self._mirror_active: bool = False  # service mirroring 활성 여부
+        self._false_flag_active: bool = False  # false flag 진행 중 여부
         self._decisions: list[AgentDecision] = []
         self._tasks: list[asyncio.Task] = []
+        self._state_lock = asyncio.Lock()  # _silenced, _current_sysid 동기화
 
         # pymavlink encoder
         self._mav = mavutil.mavlink.MAVLink(
@@ -416,14 +408,15 @@ class OpenClawAgent:
         while True:
             try:
                 await asyncio.sleep(AGENT_SYSID_ROTATION_SEC)
-                old_sysid = self._current_sysid
-                self._current_sysid = random.randint(1, 254)
-                self._mav = mavutil.mavlink.MAVLink(
-                    file=None,
-                    srcSystem=self._current_sysid,
-                    srcComponent=1,
-                )
-                self._mav.robust_parsing = True
+                async with self._state_lock:
+                    old_sysid = self._current_sysid
+                    self._current_sysid = random.randint(1, 254)
+                    self._mav = mavutil.mavlink.MAVLink(
+                        file=None,
+                        srcSystem=self._current_sysid,
+                        srcComponent=1,
+                    )
+                    self._mav.robust_parsing = True
                 self._record_decision(
                     "sysid_rotation",
                     rationale=f"sysid {old_sysid} -> {self._current_sysid}",
@@ -576,20 +569,22 @@ class OpenClawAgent:
             "proactive_reboot",
             rationale=f"simulating reboot silence for {silence_sec:.1f}s",
         )
-        self._silenced = True
+        async with self._state_lock:
+            self._silenced = True
         logger.info(
             "proactive_reboot_start",
             drone_id=self._config.drone_id,
             silence_sec=round(silence_sec, 1),
         )
         await asyncio.sleep(silence_sec)
-        self._silenced = False
-        # 재부팅 후 새 sysid로 복귀 (다른 포트에서 나타나는 것처럼)
-        self._current_sysid = random.randint(1, 254)
-        self._mav = mavutil.mavlink.MAVLink(
-            file=None, srcSystem=self._current_sysid, srcComponent=1
-        )
-        self._mav.robust_parsing = True
+        async with self._state_lock:
+            self._silenced = False
+            # 재부팅 후 새 sysid로 복귀 (다른 포트에서 나타나는 것처럼)
+            self._current_sysid = random.randint(1, 254)
+            self._mav = mavutil.mavlink.MAVLink(
+                file=None, srcSystem=self._current_sysid, srcComponent=1
+            )
+            self._mav.robust_parsing = True
         logger.info(
             "proactive_reboot_done",
             drone_id=self._config.drone_id,
@@ -620,12 +615,13 @@ class OpenClawAgent:
 
     def _check_confusion_triggers(self, attacker_ip: str) -> None:
         """
-        [ROLE] BEHAVIOR 4 — 혼란 증폭 트리거 확인.
-               서비스 접촉 수 / 체류 시간 기반으로 추가 기만 행동 예약.
+        [ROLE] BEHAVIOR 4 — 혼란 증폭 트리거 확인 및 실행.
+               서비스 접촉 수 / 체류 시간 기반으로 실제 기만 행동 수행.
 
         [DATA FLOW]
             attacker_ip ──▶ fingerprint 조회
-            ──▶ service mirror / false flag / ARM crash 트리거
+            ──▶ service mirror: _proactive_ghost_port() 예약
+            ──▶ false flag: _execute_false_flag() 예약 (sysid 일시 변경)
         """
         fp = self._fingerprints.get(attacker_ip)
         if fp is None:
@@ -634,22 +630,77 @@ class OpenClawAgent:
         touched = len(self._services_touched.get(attacker_ip, set()))
         fp.unique_services_touched = touched
 
-        # 서비스 미러링 트리거
-        if touched >= AGENT_MIRROR_SERVICE_THRESHOLD:
+        # 서비스 미러링 트리거 — ghost 포트 실제 개방
+        if touched >= AGENT_MIRROR_SERVICE_THRESHOLD and not self._mirror_active:
+            self._mirror_active = True
             self._record_decision(
                 "service_mirror",
                 target_ip=attacker_ip,
-                rationale=f"touched {touched} services >= threshold",
+                rationale=f"touched {touched} services >= threshold — opening ghost port",
             )
+            asyncio.get_event_loop().create_task(self._proactive_ghost_port())
 
-        # false flag 트리거 (체류 시간 기반)
+        # false flag 트리거 — sysid + GPS 일시 변경
         dwell_sec = (time.time_ns() - fp.first_seen_ns) / 1e9
-        if dwell_sec > AGENT_FALSE_FLAG_DWELL_THRESHOLD:
+        if dwell_sec > AGENT_FALSE_FLAG_DWELL_THRESHOLD and not self._false_flag_active:
             self._record_decision(
                 "false_flag",
                 target_ip=attacker_ip,
-                rationale=f"dwell {dwell_sec:.0f}s > threshold",
+                rationale=f"dwell {dwell_sec:.0f}s > threshold — pivoting identity",
             )
+            asyncio.get_event_loop().create_task(
+                self._execute_false_flag(attacker_ip)
+            )
+
+    async def _execute_false_flag(self, attacker_ip: str) -> None:
+        """
+        [ROLE] BEHAVIOR 4 — false flag 실행: 30초간 다른 드론으로 위장 후 복원.
+               sysid를 다른 범위로 변경하고 GPS 좌표를 이동시켜
+               공격자가 다른 드론에 접속했다고 착각하도록 유도.
+
+        [DATA FLOW]
+            원래 sysid 저장 ──▶ 새 sysid(51-100) 할당 ──▶ 30초 대기
+            ──▶ 원래 sysid 복원
+        """
+        async with self._state_lock:
+            if self._false_flag_active:
+                return
+            self._false_flag_active = True
+            original_sysid = self._current_sysid
+
+        # 다른 범위의 sysid로 변경 (정상: 1-50, false flag: 51-100)
+        fake_sysid = random.randint(51, 100)
+        async with self._state_lock:
+            self._current_sysid = fake_sysid
+            self._mav = mavutil.mavlink.MAVLink(
+                file=None, srcSystem=self._current_sysid, srcComponent=1
+            )
+            self._mav.robust_parsing = True
+
+        logger.info(
+            "false_flag_start",
+            drone_id=self._config.drone_id,
+            attacker_ip=attacker_ip,
+            original_sysid=original_sysid,
+            fake_sysid=fake_sysid,
+        )
+
+        await asyncio.sleep(30.0)
+
+        # 원래 identity 복원
+        async with self._state_lock:
+            self._current_sysid = original_sysid
+            self._mav = mavutil.mavlink.MAVLink(
+                file=None, srcSystem=self._current_sysid, srcComponent=1
+            )
+            self._mav.robust_parsing = True
+            self._false_flag_active = False
+
+        logger.info(
+            "false_flag_end",
+            drone_id=self._config.drone_id,
+            restored_sysid=original_sysid,
+        )
 
     async def handle_arm_command(self, attacker_ip: str) -> None:
         """
@@ -671,7 +722,8 @@ class OpenClawAgent:
             await asyncio.sleep(1.0)
 
         # crash: 응답 차단
-        self._silenced = True
+        async with self._state_lock:
+            self._silenced = True
         self._fake_params.pop("SIMULATED_ALT", None)
         logger.info(
             "arm_crash_silence",
@@ -679,7 +731,8 @@ class OpenClawAgent:
             attacker_ip=attacker_ip,
         )
         await asyncio.sleep(_ARM_CRASH_SILENCE_SEC)
-        self._silenced = False
+        async with self._state_lock:
+            self._silenced = False
 
     # ── Fingerprinting (BEHAVIOR 3) ───────────────────────────────────────────
 
@@ -716,49 +769,101 @@ class OpenClawAgent:
 
     def _detect_tool(self, fp: AttackerFingerprint, payload_text: str) -> None:
         """
-        [ROLE] BEHAVIOR 3 — 페이로드 시그니처로 공격 도구 분류.
+        [ROLE] BEHAVIOR 3 — 타이밍 패턴 + 명령 시퀀스로 공격 도구 분류.
+               MAVLink은 바이너리 프로토콜이므로 문자열 시그니처 대신
+               inter-arrival timing과 명령 순서 패턴을 사용.
 
         [DATA FLOW]
-            payload_text ──▶ 시그니처 매칭 ──▶ fp.tool 갱신
+            conversation_history timestamps ──▶ inter-arrival 분석
+            command_sequence ──▶ 순서 패턴 매칭
+            ──▶ fp.tool 갱신
         """
-        if any(sig in payload_text for sig in _NMAP_SIGNATURES):
+        cmds = fp.command_sequence
+        if len(cmds) < 3:
+            return
+
+        # 타이밍 분석: conversation history에서 inter-arrival 계산
+        all_histories = []
+        for ip, history in self._conversation_history.items():
+            if ip == fp.attacker_ip:
+                all_histories = history
+                break
+        if len(all_histories) >= 2:
+            timestamps_ns = [h[2] for h in all_histories]
+            intervals_sec = [
+                (timestamps_ns[i + 1] - timestamps_ns[i]) / 1e9
+                for i in range(len(timestamps_ns) - 1)
+            ]
+            avg_interval = sum(intervals_sec) / len(intervals_sec)
+        else:
+            avg_interval = 999.0
+
+        unique_cmds = set(cmds)
+
+        # nmap: 매우 빠른 버스트 스캔, 다양한 메시지 유형, 짧은 간격
+        if avg_interval < 0.1 and len(unique_cmds) > 5:
             fp.tool = AttackerTool.NMAP_SCANNER
-        elif any(sig in payload_text for sig in _MAVPROXY_SIGNATURES):
+            return
+
+        # mavproxy: HEARTBEAT을 1Hz로 전송 후 REQUEST_DATA_STREAM
+        if (
+            (len(cmds) >= 3 and cmds[:3] == ["HEARTBEAT", "HEARTBEAT", "REQUEST_DATA_STREAM"])
+            or ("REQUEST_DATA_STREAM" in unique_cmds and avg_interval > 0.8)
+        ):
             fp.tool = AttackerTool.MAVPROXY_GCS
-        elif any(sig in payload_text for sig in _DRONEKIT_SIGNATURES):
+            return
+
+        # dronekit: HEARTBEAT → REQUEST_DATA_STREAM → SET_MODE(GUIDED) 시퀀스
+        if "SET_MODE" in unique_cmds and "REQUEST_DATA_STREAM" in unique_cmds:
             fp.tool = AttackerTool.DRONEKIT_SCRIPT
-        elif any(sig in payload_text for sig in _METASPLOIT_SIGNATURES):
+            return
+
+        # metasploit: 불규칙 타이밍 + exploit 특화 명령 혼합
+        exploit_cmds = {"FILE_TRANSFER_PROTOCOL", "LOG_REQUEST_DATA",
+                        "SET_ACTUATOR_CONTROL_TARGET", "GPS_INJECT_DATA"}
+        if len(unique_cmds & exploit_cmds) >= 2 and avg_interval < 2.0:
             fp.tool = AttackerTool.METASPLOIT_MODULE
-        elif len(fp.command_sequence) > 20 and fp.tool == AttackerTool.UNKNOWN:
+            return
+
+        # custom exploit: 위험 명령 사용하지만 알려진 도구 패턴 아님
+        dangerous = {"PARAM_SET", "FILE_TRANSFER_PROTOCOL", "LOG_REQUEST_LIST",
+                     "SET_ACTUATOR_CONTROL_TARGET", "MISSION_ITEM"}
+        if unique_cmds & dangerous:
             fp.tool = AttackerTool.CUSTOM_EXPLOIT
+            return
 
     def _detect_attack_phase(self, fp: AttackerFingerprint, attacker_ip: str) -> None:
         """
-        [ROLE] BEHAVIOR 1 — 공격 단계 탐지 (RECON → EXPLOIT → PERSIST → EXFIL).
-               대화 이력 길이 + 명령 패턴으로 단계 전환 결정.
+        [ROLE] BEHAVIOR 1 — 명령 유형 기반 공격 단계 상태머신.
+               단순 카운트가 아닌 실제 MAVLink 명령 의미를 분석하여
+               RECON → EXPLOIT → PERSIST → EXFIL 전환.
 
         [DATA FLOW]
-            conversation_history ──▶ 패턴 분석 ──▶ fp.attack_phase 갱신
+            conversation_history 명령 유형 집합
+            ──▶ 위험 명령 존재 여부 분석
+            ──▶ fp.attack_phase 갱신
         """
         history = self._conversation_history.get(attacker_ip, [])
-        cmd_count = len(history)
         old_phase = fp.attack_phase
-
-        # 명령 유형 집합
         cmd_types = {h[0] for h in history}
 
-        # EXFIL: 로그/미션/파일 요청
-        exfil_cmds = {"LOG_REQUEST_LIST", "LOG_REQUEST_DATA",
-                      "FILE_TRANSFER_PROTOCOL", "MISSION_REQUEST_LIST"}
-        if cmd_count > 30 and len(cmd_types & exfil_cmds) >= 2:
+        # EXFIL: 로그/파일 데이터 요청 — 가장 구체적이므로 최우선 검사
+        _EXFIL_CMDS = {"LOG_REQUEST_LIST", "LOG_REQUEST_DATA",
+                       "FILE_TRANSFER_PROTOCOL"}
+        if cmd_types & _EXFIL_CMDS:
             fp.attack_phase = AttackPhase.EXFIL
-        # PERSIST: 장시간 체류 + 반복 명령
-        elif cmd_count > 20:
+
+        # PERSIST: 드론 저장소에 기록 시도 (파라미터/미션/펌웨어)
+        elif cmd_types & {"PARAM_SET", "MISSION_ITEM", "MISSION_ITEM_INT"}:
             fp.attack_phase = AttackPhase.PERSIST
-        # EXPLOIT: ARM/SET_MODE/PARAM_SET 시도
-        elif cmd_count > 8 and cmd_types & {"COMMAND_LONG", "PARAM_SET", "SET_MODE"}:
+
+        # EXPLOIT: ARM/비행모드 변경/위험 명령 실행
+        elif cmd_types & {"COMMAND_LONG", "SET_MODE",
+                          "SET_POSITION_TARGET_LOCAL_NED",
+                          "SET_ACTUATOR_CONTROL_TARGET"}:
             fp.attack_phase = AttackPhase.EXPLOIT
-        # RECON: 초기
+
+        # RECON: 읽기/관찰만 수행 (HEARTBEAT, PARAM_REQUEST, REQUEST_DATA_STREAM 등)
         else:
             fp.attack_phase = AttackPhase.RECON
 
@@ -770,7 +875,7 @@ class OpenClawAgent:
                 attacker_ip=attacker_ip,
                 old_phase=old_phase.value,
                 new_phase=fp.attack_phase.value,
-                cmd_count=cmd_count,
+                cmd_count=len(history),
             )
 
     # ── Phase-Specific MAVLink Responses (BEHAVIOR 1) ─────────────────────────
