@@ -1,0 +1,8 @@
+# Dockerfile.fcu-stub — Stub DVD Flight Controller (ArduPilot SITL)
+FROM python:3.11-slim
+RUN pip install --no-cache-dir pymavlink
+COPY docker/fcu_stub.py /app/fcu_stub.py
+EXPOSE 5760
+HEALTHCHECK --interval=5s --timeout=3s --retries=3 \
+    CMD python3 -c "import socket; s=socket.socket(); s.settimeout(1); s.connect(('localhost',5760)); s.close()"
+CMD ["python3", "/app/fcu_stub.py"]

@@ -1,0 +1,8 @@
+# Dockerfile.cc-stub — Stub DVD Companion Computer
+FROM python:3.11-slim
+RUN pip install --no-cache-dir pymavlink aiohttp
+COPY docker/cc_stub.py /app/cc_stub.py
+EXPOSE 14550/udp 80/tcp 8554/tcp
+HEALTHCHECK --interval=5s --timeout=3s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:80/health')"
+CMD ["python3", "/app/cc_stub.py"]

@@ -1,256 +1,120 @@
 # docker-compose.test-harness.yml — MIRAGE-UAS Test Harness
 #
 # Project  : MIRAGE-UAS
-# Author   : DS Lab / 민성 <kmseong0508@kyonggi.ac.kr>
+# Author   : DS Lab
 # Created  : 2026-04-06
 #
-# [ROLE] DVD Docker 이미지 + 자체 공격 시뮬레이터 + 기만 모니터
-#        외부 Kali 불필요 — WSL2 Ubuntu 단독 실행 테스트 환경
-#
-# [구성]
-#   DVD FCU × 3     : nicholasaleks/dvd-flight-controller:latest
-#   DVD CC × 3      : nicholasaleks/dvd-companion-computer:latest
-#   DVD Simulator   : nicholasaleks/dvd-simulator:lite
-#   attacker-sim    : mirage-attacker:latest (Dockerfile.attacker)
-#   deception-monitor: Python 3.11 (src/evaluation/deception_monitor.py)
-#
-# [네트워크]
-#   test_net 172.40.0.0/24 (격리, 모든 컨테이너 동일 서브넷)
-#   honey_drone stack: 172.40.0.10-12
-#   attacker-sim:      172.40.0.200
-#   deception-monitor: 172.40.0.250
+# [ROLE] Stub DVD images + attacker simulator + deception monitor
+#        No real DVD images needed — builds from local Dockerfiles
 #
 # [사용법]
 #   docker compose -f config/docker-compose.test-harness.yml up -d
-#   docker compose -f config/docker-compose.test-harness.yml down --volumes
+#   docker compose -f config/docker-compose.test-harness.yml down
 # ═══════════════════════════════════════════════════════════════
 
 version: "3.9"
 
-# ── 공유 설정 앵커 ─────────���──────────────────────────────────
-x-fcu-test: &fcu-test
-  image: nicholasaleks/dvd-flight-controller:latest
+x-fcu: &fcu-base
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.fcu-stub
   restart: "no"
   networks:
     test_net: {}
-  mem_limit: 1g
-  cpus: "1.5"
+  mem_limit: 256m
 
-x-cc-test: &cc-test
-  image: nicholasaleks/dvd-companion-computer:latest
+x-cc: &cc-base
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.cc-stub
   restart: "no"
   networks:
     test_net: {}
-  mem_limit: 512m
-  cpus: "1.0"
+  mem_limit: 256m
 
 services:
 
-  # ════════════════════════════════
-  # HONEY DRONE 01 (172.40.0.10)
-  # ════════════════════════════════
+  # ═══ HONEY DRONE 01 ═══
   fcu-test-01:
-    <<: *fcu-test
+    <<: *fcu-base
     container_name: fcu_test_01
     hostname: fcu-test-01
     networks:
       test_net:
         ipv4_address: "172.40.0.20"
-    environment:
-      - DRONE_ID=honey_01
-      - DRONE_ROLE=honeypot
-      - SITL_TCP_PORT=5760
-      - COMPANION_COMPUTER_HOST=cc-test-01
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(1); s.connect(('localhost',5760)); s.close()\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   cc-test-01:
-    <<: *cc-test
+    <<: *cc-base
     container_name: cc_test_01
     hostname: cc-test-01
     networks:
       test_net:
         ipv4_address: "172.40.0.10"
+    environment:
+      - DRONE_ID=honey_01
     depends_on:
       fcu-test-01:
         condition: service_healthy
-    environment:
-      - DRONE_ID=honey_01
-      - DRONE_ROLE=honeypot
-      - FCU_HOST=fcu-test-01
-      - FCU_PORT=5760
-      - MAVLINK_PORT=14550
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:80/health')\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 45s
 
-  # ════════════════���═══════════════
-  # HONEY DRONE 02 (172.40.0.11)
-  # ═══════════════��══════��═════════
+  # ═══ HONEY DRONE 02 ═══
   fcu-test-02:
-    <<: *fcu-test
+    <<: *fcu-base
     container_name: fcu_test_02
     hostname: fcu-test-02
     networks:
       test_net:
         ipv4_address: "172.40.0.21"
-    environment:
-      - DRONE_ID=honey_02
-      - DRONE_ROLE=honeypot
-      - SITL_TCP_PORT=5760
-      - COMPANION_COMPUTER_HOST=cc-test-02
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(1); s.connect(('localhost',5760)); s.close()\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   cc-test-02:
-    <<: *cc-test
+    <<: *cc-base
     container_name: cc_test_02
     hostname: cc-test-02
     networks:
       test_net:
         ipv4_address: "172.40.0.11"
+    environment:
+      - DRONE_ID=honey_02
     depends_on:
       fcu-test-02:
         condition: service_healthy
-    environment:
-      - DRONE_ID=honey_02
-      - DRONE_ROLE=honeypot
-      - FCU_HOST=fcu-test-02
-      - FCU_PORT=5760
-      - MAVLINK_PORT=14550
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:80/health')\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 45s
 
-  # ═════════════════��══════════════
-  # HONEY DRONE 03 (172.40.0.12)
-  # ═══════════════════════���════════
+  # ═══ HONEY DRONE 03 ═══
   fcu-test-03:
-    <<: *fcu-test
+    <<: *fcu-base
     container_name: fcu_test_03
     hostname: fcu-test-03
     networks:
       test_net:
         ipv4_address: "172.40.0.22"
-    environment:
-      - DRONE_ID=honey_03
-      - DRONE_ROLE=honeypot
-      - SITL_TCP_PORT=5760
-      - COMPANION_COMPUTER_HOST=cc-test-03
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(1); s.connect(('localhost',5760)); s.close()\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   cc-test-03:
-    <<: *cc-test
+    <<: *cc-base
     container_name: cc_test_03
     hostname: cc-test-03
     networks:
       test_net:
         ipv4_address: "172.40.0.12"
+    environment:
+      - DRONE_ID=honey_03
     depends_on:
       fcu-test-03:
         condition: service_healthy
-    environment:
-      - DRONE_ID=honey_03
-      - DRONE_ROLE=honeypot
-      - FCU_HOST=fcu-test-03
-      - FCU_PORT=5760
-      - MAVLINK_PORT=14550
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:80/health')\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 45s
 
-  # ════════════════════════════════
-  # DVD Simulator (lite)
-  # ═══════════════���════════════════
-  simulator:
-    image: nicholasaleks/dvd-simulator:lite
-    container_name: dvd_test_simulator
-    hostname: simulator
-    networks:
-      test_net:
-        ipv4_address: "172.40.0.30"
-    environment:
-      - SIMULATOR_MODE=lite
-      - DRONE_TARGETS=fcu-test-01:5760,fcu-test-02:5760,fcu-test-03:5760
-    mem_limit: 512m
-    cpus: "0.5"
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - fcu-test-01
-      - fcu-test-02
-      - fcu-test-03
-
-  # ════════════════════════════════
-  # CTI Ingest API (deception-monitor 연동)
-  # ════════════���═══════════════════
-  cti-api:
-    image: python:3.11-slim
-    container_name: cti_test_api
-    hostname: cti-api
-    networks:
-      test_net:
-        ipv4_address: "172.40.0.240"
-    volumes:
-      - ../src:/app/src:ro
-      - ../config/.env:/app/.env:ro
-      - ../results:/app/results:rw
-    working_dir: /app
-    command: >
-      sh -c "pip install -q fastapi uvicorn python-dotenv stix2 structlog &&
-             uvicorn src.cti_pipeline.cti_ingest_api:app
-             --host 0.0.0.0 --port 8765 --log-level info"
-    environment:
-      - CTI_API_HOST=0.0.0.0
-      - CTI_API_PORT=8765
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/status')\""]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    mem_limit: 256m
-    cpus: "0.5"
-
-  # ══════���═════════════════════════
-  # Attacker Simulator (172.40.0.200)
-  # ════════════════════════════════
+  # ═══ Attacker Simulator ═══
   attacker-simulator:
-    image: mirage-attacker:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.attacker
     container_name: mirage_attacker
     hostname: attacker
     networks:
       test_net:
         ipv4_address: "172.40.0.200"
     environment:
-      - ATTACKER_LEVEL_DURATION_SEC=${ATTACKER_LEVEL_DURATION_SEC:-60}
+      - ATTACKER_LEVEL_DURATION_SEC=${ATTACKER_LEVEL_DURATION_SEC:-30}
       - HONEY_DRONE_TARGETS=172.40.0.10:14550,172.40.0.11:14550,172.40.0.12:14550
       - WEBCLAW_PORT_BASE=18789
-      - HTTP_PORT_BASE=8080
+      - HTTP_PORT_BASE=79
       - RESULTS_DIR=/results
     volumes:
       - ../results:/results:rw
@@ -262,34 +126,6 @@ services:
       cc-test-03:
         condition: service_healthy
 
-  # ═════════════════════════���══════
-  # Deception Monitor (172.40.0.250)
-  # ════════════════��═══════════════
-  deception-monitor:
-    image: python:3.11-slim
-    container_name: mirage_deception_monitor
-    hostname: deception-monitor
-    networks:
-      test_net:
-        ipv4_address: "172.40.0.250"
-    volumes:
-      - ../src:/app/src:ro
-      - ../config/.env:/app/.env:ro
-      - ../results:/app/results:rw
-    working_dir: /app
-    command: >
-      sh -c "pip install -q aiohttp python-dotenv structlog &&
-             python -m src.evaluation.deception_monitor"
-    environment:
-      - CTI_API_BASE=http://cti-api:8765
-      - RESULTS_DIR=results
-    depends_on:
-      cti-api:
-        condition: service_healthy
-    mem_limit: 256m
-    cpus: "0.5"
-
-# ── Networks ─────────────────────────────────────────────────
 networks:
   test_net:
     name: test_net

@@ -2,7 +2,7 @@
   "tests": [
     {
       "name": "L0_vs_L3_dwell",
-      "l0_dwell": 1.0,
+      "l0_dwell": 0.0,
       "l3_dwell": 0.0,
       "note": "requires N>=6 paired samples for Wilcoxon"
     }

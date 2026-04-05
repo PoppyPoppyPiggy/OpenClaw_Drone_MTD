@@ -1,12 +1,10 @@
 {
-  "experiment_id": "docker-e2e-001",
-  "start_time": 1775430442.8190393,
-  "end_time": 1775430610.0190396,
-  "duration_sec": 167.2,
+  "experiment_id": "docker-e2e",
+  "duration_sec": 167.0,
   "honey_drone_count": 3,
-  "total_sessions": 136,
+  "total_sessions": 172,
   "total_mtd_actions": 8,
-  "deception_success": 0.3382,
-  "dataset_size": 136,
+  "deception_success": 0.4709,
+  "dataset_size": 172,
   "unique_ttps": 12
 }
