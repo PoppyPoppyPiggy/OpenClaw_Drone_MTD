@@ -111,6 +111,7 @@ class MirageExperiment:
         self._pos_collector = None
         self._neg_generator = None
         self._mtd_executor  = None
+        self._mtd_monitor   = None
         self._metrics       = None
         self._tasks         : list[asyncio.Task] = []
 
@@ -196,6 +197,13 @@ class MirageExperiment:
             self._http_capture = HTTPRTSPCapture(configs, self._capture_q)
             self._mtd_executor = MTDExecutor(self._drone_mgr, self._all_mtd_results)
 
+            from mtd.mtd_monitor import MTDMonitor
+            self._mtd_monitor = MTDMonitor(
+                instances={},  # populated after spawn
+                mtd_trigger_q=self._mtd_trigger_q,
+                drone_manager=self._drone_mgr,
+            )
+
         elif self._mode in ("dry-run", "cti-only"):
             # Docker 없이 합성 이벤트로 파이프라인 테스트
             self._configs = []
@@ -237,6 +245,10 @@ class MirageExperiment:
                         name="mtd_executor"
                     )
                 )
+
+            # MTD Monitor 시작
+            if self._mtd_monitor:
+                await self._mtd_monitor.start()
 
         # Track B: 파이프라인 처리 태스크 (모든 모드 공통)
         self._tasks.append(
@@ -295,6 +307,8 @@ class MirageExperiment:
 
         # 컴포넌트 정지 (역순)
         if self._mode == "full":
+            if self._mtd_monitor:
+                await self._mtd_monitor.stop()
             for engine in self._engines:
                 await engine.stop()
             if self._http_capture:
