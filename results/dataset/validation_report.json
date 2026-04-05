@@ -1,0 +1,31 @@
+{
+  "total_samples": 1012,
+  "positive_count": 405,
+  "negative_count": 607,
+  "class_ratio": 1.499,
+  "unique_ttps": [
+    "T0820",
+    "T0821",
+    "T0831",
+    "T0836",
+    "T0839",
+    "T0840",
+    "T0842",
+    "T0843",
+    "T0855",
+    "T0858",
+    "T0882",
+    "T0886"
+  ],
+  "ttp_count": 12,
+  "duplicate_ids": [],
+  "passed": true,
+  "validated_at": 1775427727.9658566,
+  "issues": [
+    {
+      "code": "V5",
+      "severity": "WARNING",
+      "message": "레벨 분포 편중: L1_BASIC = 100.0% (권장 ≤ 90%)"
+    }
+  ]
+}

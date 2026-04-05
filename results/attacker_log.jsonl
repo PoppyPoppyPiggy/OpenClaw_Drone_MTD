@@ -1,0 +1,137 @@
+{"timestamp": 1775430073.4097593, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14569", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430074.5114088, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14581", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430075.6129367, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14575", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430076.713619, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14562", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430077.815092, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14591", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430078.9166045, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14570", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430080.0180686, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14580", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430081.1195276, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14579", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430082.2209947, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14552", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430083.322451, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14555", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430084.423947, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14576", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430085.5254257, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14584", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430086.6268456, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14556", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430087.728263, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14567", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430088.8297338, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14590", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430089.9311783, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14583", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430091.0326824, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14558", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430092.134162, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14593", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430093.2356648, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14565", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430094.337146, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14559", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430095.4385638, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14574", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430096.539979, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14588", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430097.641443, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14588", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430098.7428846, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14599", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430099.8443751, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14551", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430100.9458983, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14575", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430102.0473635, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14592", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430103.1488466, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14566", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430104.250364, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14577", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430105.351833, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14578", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775430105.4524286, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430105.6530464, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430105.8537161, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.24}
+{"timestamp": 1775430106.0543869, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.23}
+{"timestamp": 1775430106.2549658, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.18}
+{"timestamp": 1775430106.4555748, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430108.6580722, "level": 1, "action": "heartbeat_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430110.8606787, "level": 1, "action": "param_request_list_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430113.0632188, "level": 1, "action": "arm_command_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430113.2639198, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.22}
+{"timestamp": 1775430113.4645176, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.19}
+{"timestamp": 1775430113.665122, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430113.8657598, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.21}
+{"timestamp": 1775430114.0663602, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.19}
+{"timestamp": 1775430114.2670007, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.22}
+{"timestamp": 1775430116.4695275, "level": 1, "action": "heartbeat_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430118.6720545, "level": 1, "action": "param_request_list_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430120.8736346, "level": 1, "action": "arm_command_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430121.0742528, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.18}
+{"timestamp": 1775430121.2748785, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.21}
+{"timestamp": 1775430121.475524, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.22}
+{"timestamp": 1775430121.6761591, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430121.8767314, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.17}
+{"timestamp": 1775430122.0773094, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.18}
+{"timestamp": 1775430124.2798047, "level": 1, "action": "heartbeat_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430126.4823375, "level": 1, "action": "param_request_list_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430128.684934, "level": 1, "action": "arm_command_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430128.8856359, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.21}
+{"timestamp": 1775430129.086252, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430129.28688, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430129.4875264, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.21}
+{"timestamp": 1775430129.6881387, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.19}
+{"timestamp": 1775430129.8887582, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "02035100000000030300", "duration_ms": 0.2}
+{"timestamp": 1775430132.0912843, "level": 1, "action": "heartbeat_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430134.293895, "level": 1, "action": "param_request_list_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430136.49646, "level": 1, "action": "arm_command_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775430136.8114648, "level": 2, "action": "http_get_/api/v1/params", "target": "http://172.40.0.11:80/api/v1/params", "response_preview": "{\"params\": {\"ARMING_CHECK\": 1.0, \"RTL_ALT\": 1500.0, \"BATT_CAPACITY\": 5200.0}}", "duration_ms": 0.86}
+{"timestamp": 1775430136.8118603, "level": 2, "action": "http_get_/api/v1/status", "target": "http://172.40.0.11:80/api/v1/status", "response_preview": "{\"drone_id\": \"honey_01\", \"armed\": false, \"mode\": \"STABILIZE\", \"battery\": 63}", "duration_ms": 0.31}
+{"timestamp": 1775430136.812214, "level": 2, "action": "http_get_/api/v1/mission", "target": "http://172.40.0.11:80/api/v1/mission", "response_preview": "{\"mission_count\": 5, \"waypoints\": []}", "duration_ms": 0.3}
+{"timestamp": 1775430136.8125231, "level": 2, "action": "http_get_/health", "target": "http://172.40.0.11:80/health", "response_preview": "OK", "duration_ms": 0.25}
+{"timestamp": 1775430136.8136792, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 1.1}
+{"timestamp": 1775430136.8140423, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.31}
+{"timestamp": 1775430136.8143864, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.29}
+{"timestamp": 1775430137.3155186, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.12:81/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430137.3158216, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.12:81/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430137.3160958, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.12:81/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430137.3163178, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.12:81/health", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430140.8211243, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.10:82/api/v1/params", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775430140.903827, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.10:82/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.10:82 ssl:default [Connect call failed ('172.40.0.10', 82)]", "duration_ms": 0}
+{"timestamp": 1775430143.9073532, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.10:82/api/v1/mission", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775430144.0237575, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.10:82/health", "response_preview": "Cannot connect to host 172.40.0.10:82 ssl:default [Connect call failed ('172.40.0.10', 82)]", "duration_ms": 0}
+{"timestamp": 1775430150.6584501, "level": 2, "action": "http_get_/api/v1/params", "target": "http://172.40.0.11:80/api/v1/params", "response_preview": "{\"params\": {\"ARMING_CHECK\": 1.0, \"RTL_ALT\": 1500.0, \"BATT_CAPACITY\": 5200.0}}", "duration_ms": 0.6}
+{"timestamp": 1775430150.6588252, "level": 2, "action": "http_get_/api/v1/status", "target": "http://172.40.0.11:80/api/v1/status", "response_preview": "{\"drone_id\": \"honey_01\", \"armed\": false, \"mode\": \"STABILIZE\", \"battery\": 74}", "duration_ms": 0.26}
+{"timestamp": 1775430150.6590993, "level": 2, "action": "http_get_/api/v1/mission", "target": "http://172.40.0.11:80/api/v1/mission", "response_preview": "{\"mission_count\": 7, \"waypoints\": []}", "duration_ms": 0.22}
+{"timestamp": 1775430150.6593618, "level": 2, "action": "http_get_/health", "target": "http://172.40.0.11:80/health", "response_preview": "OK", "duration_ms": 0.21}
+{"timestamp": 1775430150.6597896, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.38}
+{"timestamp": 1775430150.6602178, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.35}
+{"timestamp": 1775430150.660574, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.29}
+{"timestamp": 1775430151.1615758, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.12:81/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430151.1618397, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.12:81/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430151.1620586, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.12:81/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430151.1622655, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.12:81/health", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430154.6670709, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.10:82/api/v1/params", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775430154.823777, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.10:82/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.10:82 ssl:default [Connect call failed ('172.40.0.10', 82)]", "duration_ms": 0}
+{"timestamp": 1775430157.8272755, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.10:82/api/v1/mission", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775430157.9437666, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.10:82/health", "response_preview": "Cannot connect to host 172.40.0.10:82 ssl:default [Connect call failed ('172.40.0.10', 82)]", "duration_ms": 0}
+{"timestamp": 1775430164.5684192, "level": 2, "action": "http_get_/api/v1/params", "target": "http://172.40.0.11:80/api/v1/params", "response_preview": "{\"params\": {\"ARMING_CHECK\": 1.0, \"RTL_ALT\": 1500.0, \"BATT_CAPACITY\": 5200.0}}", "duration_ms": 0.58}
+{"timestamp": 1775430164.5688078, "level": 2, "action": "http_get_/api/v1/status", "target": "http://172.40.0.11:80/api/v1/status", "response_preview": "{\"drone_id\": \"honey_01\", \"armed\": false, \"mode\": \"STABILIZE\", \"battery\": 70}", "duration_ms": 0.26}
+{"timestamp": 1775430164.5690844, "level": 2, "action": "http_get_/api/v1/mission", "target": "http://172.40.0.11:80/api/v1/mission", "response_preview": "{\"mission_count\": 6, \"waypoints\": []}", "duration_ms": 0.22}
+{"timestamp": 1775430164.569354, "level": 2, "action": "http_get_/health", "target": "http://172.40.0.11:80/health", "response_preview": "OK", "duration_ms": 0.22}
+{"timestamp": 1775430164.5697324, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.33}
+{"timestamp": 1775430164.5700655, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.28}
+{"timestamp": 1775430164.5704453, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "404: Not Found", "duration_ms": 0.31}
+{"timestamp": 1775430165.071447, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.12:81/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430165.0717018, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.12:81/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430165.071928, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.12:81/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430165.0721226, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.12:81/health", "response_preview": "Cannot connect to host 172.40.0.12:81 ssl:default [Connect call failed ('172.40.0.12', 81)]", "duration_ms": 0}
+{"timestamp": 1775430168.5760036, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.10:82/api/v1/params", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775430168.663753, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.10:82/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.10:82 ssl:default [Connect call failed ('172.40.0.10', 82)]", "duration_ms": 0}
+{"timestamp": 1775430171.6671934, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.10:82/api/v1/mission", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775430171.7837842, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.10:82/health", "response_preview": "Cannot connect to host 172.40.0.10:82 ssl:default [Connect call failed ('172.40.0.10', 82)]", "duration_ms": 0}
+{"timestamp": 1775430178.4302928, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18790", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18790)", "duration_ms": 0}
+{"timestamp": 1775430179.4318655, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18791)", "duration_ms": 0}
+{"timestamp": 1775430183.4337256, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18792", "response_preview": "timed out during opening handshake", "duration_ms": 0}
+{"timestamp": 1775430184.4353375, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18790", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18790)", "duration_ms": 0}
+{"timestamp": 1775430185.436907, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18791)", "duration_ms": 0}
+{"timestamp": 1775430189.4416008, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18792", "response_preview": "timed out during opening handshake", "duration_ms": 0}
+{"timestamp": 1775430190.4431736, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18790", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18790)", "duration_ms": 0}
+{"timestamp": 1775430191.4447398, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18791)", "duration_ms": 0}
+{"timestamp": 1775430195.4493742, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18792", "response_preview": "timed out during opening handshake", "duration_ms": 0}
+{"timestamp": 1775430196.4509459, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18790", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18790)", "duration_ms": 0}
+{"timestamp": 1775430197.4520319, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18791)", "duration_ms": 0}
+{"timestamp": 1775430201.4567428, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18792", "response_preview": "timed out during opening handshake", "duration_ms": 0}
+{"timestamp": 1775430202.4583168, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18790", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18790)", "duration_ms": 0}
+{"timestamp": 1775430203.4599283, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18791)", "duration_ms": 0}
+{"timestamp": 1775430207.4647107, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18792", "response_preview": "timed out during opening handshake", "duration_ms": 0}
+{"timestamp": 1775430208.4664023, "level": 4, "action": "breadcrumb_harvest", "target": "log", "response_preview": "found 0 breadcrumbs", "duration_ms": 0}
+{"timestamp": 1775430208.466767, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.11:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 2222)", "duration_ms": 0}
+{"timestamp": 1775430208.4689238, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.12:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 2222)", "duration_ms": 0}
+{"timestamp": 1775430211.4712508, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.10:2222", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775430219.8665478, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.11:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 2222)", "duration_ms": 0}
+{"timestamp": 1775430219.8681762, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.12:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 2222)", "duration_ms": 0}
+{"timestamp": 1775430220.9837875, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.10:2222", "response_preview": "[Errno 113] Connect call failed ('172.40.0.10', 2222)", "duration_ms": 0}
+{"timestamp": 1775430230.2278373, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.11:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 2222)", "duration_ms": 0}
+{"timestamp": 1775430230.2293677, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.12:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 2222)", "duration_ms": 0}
+{"timestamp": 1775430230.3437529, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.10:2222", "response_preview": "[Errno 113] Connect call failed ('172.40.0.10', 2222)", "duration_ms": 0}
+{"timestamp": 1775430239.5876024, "level": -1, "action": "final_score", "target": "summary", "response_preview": "{\"total_time_sec\": 167.18, \"decoy_time_sec\": 0.01, \"deception_score_pct\": 0.01}", "duration_ms": 0}

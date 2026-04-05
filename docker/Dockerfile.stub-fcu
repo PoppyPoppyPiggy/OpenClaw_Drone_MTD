@@ -1,0 +1,7 @@
+# Dockerfile.stub-fcu — Stub DVD Flight Controller for testing
+# Emulates ArduPilot SITL TCP :5760 (MAVLink heartbeat responder)
+FROM python:3.11-slim
+RUN pip install --no-cache-dir pymavlink
+COPY docker/stub_fcu.py /app/stub_fcu.py
+HEALTHCHECK --interval=5s --timeout=3s --retries=3 CMD python -c "import socket; s=socket.socket(); s.settimeout(1); s.connect(('localhost',5760)); s.close()"
+CMD ["python", "/app/stub_fcu.py"]

@@ -1,0 +1,51 @@
+name: DVD-CTI-Dataset
+version: v1
+created_at: '2026-04-05T22:22:07Z'
+source: Damn Vulnerable Drone honeypot deployment
+framework: MIRAGE-UAS (Moving-target Intelligent Responsive Agentic deception enGinE
+  for UAS)
+paper: ACM CCS 2026 (under review)
+drone_protocol: MAVLink 2.0 / ArduPilot SITL
+attack_surfaces:
+- MAVLink
+- HTTP
+- RTSP
+- WebSocket
+attacker_model: L0-L4 (MIRAGE-UAS §3 Threat Model)
+attck_version: ATT&CK for ICS v14
+statistics:
+  total_samples: 1012
+  positive_count: 405
+  negative_count: 607
+  class_ratio: '1:1.5'
+  unique_ttps:
+  - T0820
+  - T0821
+  - T0831
+  - T0836
+  - T0839
+  - T0840
+  - T0842
+  - T0843
+  - T0855
+  - T0858
+  - T0882
+  - T0886
+  ttp_count: 12
+  by_attacker_level:
+    L1_BASIC: 405
+schema:
+  entry_id: UUID v4
+  timestamp_ns: Unix timestamp (nanoseconds)
+  drone_id: Honey drone instance ID (honey_01..03)
+  src_ip: Attacker source IP
+  protocol: mavlink | http | rtsp | websocket
+  msg_type: MAVLink message type or HTTP method
+  attacker_level: L0_SCRIPT_KIDDIE..L4_APT (blank=benign)
+  ttp_ids: Pipe-separated ATT&CK for ICS TTP IDs
+  label: 0=benign, 1=attack
+  confidence: Classification confidence [0.0, 1.0]
+  source: honeydrone | synthetic | scenario_*
+  stix_bundle_id: STIX 2.1 bundle reference
+license: CC BY 4.0
+contact: kmseong0508@kyonggi.ac.kr

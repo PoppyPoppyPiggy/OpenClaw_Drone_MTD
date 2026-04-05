@@ -1,0 +1,7 @@
+# Dockerfile.stub-cc — Stub DVD Companion Computer for testing
+# Emulates: MAVLink UDP :14550, HTTP :80/health, RTSP :8554
+FROM python:3.11-slim
+RUN pip install --no-cache-dir pymavlink aiohttp
+COPY docker/stub_cc.py /app/stub_cc.py
+HEALTHCHECK --interval=5s --timeout=3s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:80/health')"
+CMD ["python", "/app/stub_cc.py"]

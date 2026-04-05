@@ -197,7 +197,7 @@ def _write_table_iii_tex(m_dir: Path, o_dir: Path, written: list[Path]) -> None:
         lines.append(
             f"{row['action_type']} & {row['count']} & "
             f"{row['avg_ms']:.1f} & {row['p95_ms']:.1f} & "
-            f"{row['success_rate']:.1\\%} \\\\"
+            f"{row['success_rate']*100:.1f}\\% \\\\"
         )
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}"]
     out = o_dir / "table_iii.tex"
@@ -252,7 +252,7 @@ def _write_table_v_tex(m_dir: Path, o_dir: Path, written: list[Path]) -> None:
         f"Total sessions & {data.get('total_sessions', 0)} \\\\",
         f"Protected & {data.get('protected_sessions', 0)} \\\\",
         f"Breached & {data.get('breached_sessions', 0)} \\\\",
-        f"Success rate & {data.get('success_rate', 0):.1\\%} \\\\",
+        f"Success rate & {data.get('success_rate', 0)*100:.1f}\\% \\\\",
         f"Avg dwell (s) & {data.get('avg_dwell_sec', 0):.1f} \\\\",
         r"\bottomrule",
         r"\end{tabular}",

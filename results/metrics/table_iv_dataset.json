@@ -1,0 +1,28 @@
+{
+  "total_samples": 1012,
+  "positive_count": 405,
+  "negative_count": 607,
+  "class_ratio": 1.5,
+  "by_attacker_level": {
+    "L1_BASIC": 405
+  },
+  "by_protocol": {
+    "mavlink": 987,
+    "websocket": 25
+  },
+  "unique_ttp_count": 12,
+  "unique_ttps": [
+    "T0820",
+    "T0821",
+    "T0831",
+    "T0836",
+    "T0839",
+    "T0840",
+    "T0842",
+    "T0843",
+    "T0855",
+    "T0858",
+    "T0882",
+    "T0886"
+  ]
+}

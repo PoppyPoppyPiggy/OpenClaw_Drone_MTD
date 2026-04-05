@@ -1,0 +1,26 @@
+[
+  {
+    "behavior_triggered": "proactive_statustext",
+    "count": 8,
+    "avg_attacker_dwell_after_sec": 12.5,
+    "confusion_score_delta": 0.08
+  },
+  {
+    "behavior_triggered": "proactive_flight_sim",
+    "count": 3,
+    "avg_attacker_dwell_after_sec": 60.0,
+    "confusion_score_delta": 0.05
+  },
+  {
+    "behavior_triggered": "sysid_rotation",
+    "count": 2,
+    "avg_attacker_dwell_after_sec": 45.0,
+    "confusion_score_delta": 0.03
+  },
+  {
+    "behavior_triggered": "param_cycle",
+    "count": 4,
+    "avg_attacker_dwell_after_sec": 30.0,
+    "confusion_score_delta": 0.02
+  }
+]
