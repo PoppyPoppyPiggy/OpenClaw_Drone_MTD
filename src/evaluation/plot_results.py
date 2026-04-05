@@ -71,7 +71,6 @@ _STYLE = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "axes.grid": True,
-    "grid.axis": "y",
     "grid.alpha": 0.3,
     "grid.color": "#cccccc",
 }

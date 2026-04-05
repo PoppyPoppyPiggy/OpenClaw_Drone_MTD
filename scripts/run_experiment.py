@@ -40,6 +40,8 @@ Version  : 0.1.0
         └── README.md
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import os
@@ -47,6 +49,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 # 프로젝트 루트를 sys.path에 추가 (패키지 임포트)
 _PROJECT_ROOT = Path(__file__).parent.parent
