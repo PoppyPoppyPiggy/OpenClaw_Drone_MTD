@@ -42,6 +42,8 @@ Version  : 0.2.0
         └──▶ asyncio.Queue[MavlinkCaptureEvent]  (Track B)
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import socket

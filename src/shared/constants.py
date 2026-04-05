@@ -25,8 +25,11 @@ Version  : 0.2.0
 [REF] MIRAGE-UAS §4 / .env.example 파라미터 명세
 """
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 

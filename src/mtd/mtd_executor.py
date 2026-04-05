@@ -32,6 +32,8 @@ Version  : 0.1.0
 [REF] MIRAGE-UAS §4 MTD Surface Controller
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import time

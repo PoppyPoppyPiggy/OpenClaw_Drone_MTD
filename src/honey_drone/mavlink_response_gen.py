@@ -25,6 +25,8 @@ Version  : 0.1.0
     - 모든 응답에 약간의 지연 jitter 추가 (실제 드론 지연 모방)
 """
 
+from __future__ import annotations
+
 import math
 import random
 import struct

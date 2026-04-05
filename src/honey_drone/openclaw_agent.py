@@ -45,6 +45,8 @@ Version  : 0.1.0
 [REF] MIRAGE-UAS §4.3 — Autonomous Deception Agent
 """
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json

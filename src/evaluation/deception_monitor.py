@@ -33,6 +33,8 @@ Version  : 0.1.0
     ──▶ deception_timeline.jsonl
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os
