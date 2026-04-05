@@ -1,0 +1,34 @@
+# .wslconfig — WSL2 리소스 설정
+#
+# Project  : CTI-RL-MTD Honey Drone Testbed
+# 위치     : C:\Users\<사용자명>\.wslconfig  (Windows 홈 디렉토리)
+# 적용     : wsl --shutdown 후 재시작 필요
+#
+# [근거]
+#   DVD SITL 1개 인스턴스 ≈ 512MB RAM / 1 vCPU
+#   허니드론 3개 + RL 에이전트 + CTI API ≈ 총 6GB 권장
+#   호스트 안정성을 위해 시스템 RAM의 60% 상한 설정
+
+[wsl2]
+# 허니드론 N개 + SITL + RL 에이전트 동시 실행 기준
+# HONEY_DRONE_COUNT=3 기준 최솟값: 8GB / 권장: 12GB
+memory=12GB
+
+# ArduPilot SITL 멀티 인스턴스 병렬 실행 대응
+processors=6
+
+# 스왑: 메모리 부족 시 실험 중단 방지 (SITL OOM 대비)
+swap=4GB
+
+# WSL2 → Windows 포트 포워딩 자동 활성화
+# MAVLink UDP 14550+ 포트 Windows 측 접근 허용
+localhostForwarding=true
+
+# 커널 메모리 회수 비활성화 (SITL 반복 실행 시 GC 지연 방지)
+kernelCommandLine=vmalloc=512M
+
+[experimental]
+# 네트워크 미러링 모드: WSL2 ↔ Windows 포트 공유 개선
+# Docker Desktop WSL2 backend와 MAVLink 포트 충돌 감소
+networkingMode=mirrored
+dnsTunneling=true

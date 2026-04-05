@@ -1,0 +1,391 @@
+# docker-compose.honey.yml — DVD Honey Drone Multi-Stack (v0.2.0)
+#
+# Project  : CTI-RL-MTD Honey Drone Testbed
+# Author   : DS Lab / 민성 <kmseong0508@kyonggi.ac.kr>
+# Created  : 2026-04-02
+#
+# [DVD 컴포넌트 — nicholasaleks/Damn-Vulnerable-Drone]
+#   nicholasaleks/dvd-flight-controller  : ArduPilot SITL (FCU)
+#   nicholasaleks/dvd-companion-computer : MAVLink Router + Web + RTSP
+#   nicholasaleks/dvd-simulator:lite     : 관리 콘솔 (Gazebo 없음, WSL2 호환)
+#
+# [모드] --no-wifi / lite (WSL2 호환)
+#   - Gazebo/X11/WiFi 커널모듈 불필요
+#   - GCS(QGC) 생략 → cti-interceptor가 passive tap으로 대체
+#
+# [스택 구성 per 인스턴스]
+#   fcu-honey-0N  : FCU (ArduPilot SITL) — 내부 전용
+#   cc-honey-0N   : CC (공격 표면 노출: MAVLink/HTTP/RTSP)
+#
+# [포트 매핑 (N=1~3)]
+#   FCU SITL TCP  : 127.0.0.1:(5760+N) → 5760  (내부)
+#   CC MAVLink UDP: 0.0.0.0:(14550+N)  → 14550 (공격자 노출 ◀攻)
+#   CC Web HTTP   : 127.0.0.1:(8080+N) → 80    (CC Web UI ◀攻)
+#   CC RTSP       : 0.0.0.0:(8553+N)   → 8554  (카메라 스트림 ◀攻)
+#
+# [네트워크]
+#   honey_net  172.30.0.0/24 : 공격자 트래픽 허용
+#   internal   172.31.0.0/24 : CTI 파이프라인 (external: true)
+#   sim_net    172.32.0.0/24 : Simulator 관리 (external: true)
+#
+# [사용법]
+#   docker compose -f config/docker-compose.honey.yml --env-file config/.env up -d
+#   docker compose -f config/docker-compose.honey.yml down --volumes
+# ═══════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+# ── 공유 설정 앵커 ────────────────────────────────────────────
+x-fcu-base: &fcu-base
+  image: nicholasaleks/dvd-flight-controller:latest
+  restart: "no"
+  networks:
+    - internal
+  environment:
+    - LOG_LEVEL=${LOG_LEVEL:-INFO}
+  cap_drop:
+    - ALL
+  cap_add:
+    - SYS_PTRACE
+  security_opt:
+    - no-new-privileges:true
+  mem_limit: 1g
+  cpus: "1.5"
+  volumes:
+    - ./results/logs:/app/logs:rw
+
+x-cc-base: &cc-base
+  image: nicholasaleks/dvd-companion-computer:latest
+  restart: "no"
+  networks:
+    - honey_net
+    - internal
+  cap_drop:
+    - ALL
+  cap_add:
+    - NET_BIND_SERVICE
+    - NET_RAW
+  security_opt:
+    - no-new-privileges:true
+  mem_limit: 512m
+  cpus: "1.0"
+  volumes:
+    - ./results/logs:/app/logs:rw
+
+# ── Services ─────────────────────────────────────────────────
+services:
+
+  # ════════════════════════════════
+  # HONEY DRONE 01
+  # ════════════════════════════════
+  fcu-honey-01:
+    <<: *fcu-base
+    container_name: fcu_honey_01
+    hostname: fcu-honey-01
+    ports:
+      - "127.0.0.1:5761:5760"
+    environment:
+      - DRONE_ID=honey_01
+      - DRONE_ROLE=honeypot
+      - SITL_TCP_PORT=5760
+      - COMPANION_COMPUTER_HOST=cc-honey-01
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    labels:
+      dvd.component: "flight-controller"
+      dvd.drone_id: "honey_01"
+      dvd.attacker_facing: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5760 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  cc-honey-01:
+    <<: *cc-base
+    container_name: cc_honey_01
+    hostname: cc-honey-01
+    depends_on:
+      fcu-honey-01:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:14551:14550/udp"   # MAVLink ◀攻
+      - "127.0.0.1:8081:80"          # Web UI ◀攻
+      - "0.0.0.0:8554:8554/tcp"      # RTSP ◀攻
+    environment:
+      - DRONE_ID=honey_01
+      - DRONE_ROLE=honeypot
+      - FCU_HOST=fcu-honey-01
+      - FCU_PORT=5760
+      - MAVLINK_PORT=14550
+      - RTSP_PORT=8554
+      - WEB_PORT=80
+      - MAVLINK_ROUTER_ENDPOINTS=udp:0.0.0.0:14550,udp:cti-interceptor:19551
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    labels:
+      dvd.component: "companion-computer"
+      dvd.drone_id: "honey_01"
+      dvd.attacker_facing: "true"
+      dvd.attack_surface: "mavlink,http,rtsp"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  # ════════════════════════════════
+  # HONEY DRONE 02
+  # ════════════════════════════════
+  fcu-honey-02:
+    <<: *fcu-base
+    container_name: fcu_honey_02
+    hostname: fcu-honey-02
+    ports:
+      - "127.0.0.1:5762:5760"
+    environment:
+      - DRONE_ID=honey_02
+      - DRONE_ROLE=honeypot
+      - SITL_TCP_PORT=5760
+      - COMPANION_COMPUTER_HOST=cc-honey-02
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    labels:
+      dvd.component: "flight-controller"
+      dvd.drone_id: "honey_02"
+      dvd.attacker_facing: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5760 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  cc-honey-02:
+    <<: *cc-base
+    container_name: cc_honey_02
+    hostname: cc-honey-02
+    depends_on:
+      fcu-honey-02:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:14552:14550/udp"
+      - "127.0.0.1:8082:80"
+      - "0.0.0.0:8555:8554/tcp"
+    environment:
+      - DRONE_ID=honey_02
+      - DRONE_ROLE=honeypot
+      - FCU_HOST=fcu-honey-02
+      - FCU_PORT=5760
+      - MAVLINK_PORT=14550
+      - RTSP_PORT=8554
+      - WEB_PORT=80
+      - MAVLINK_ROUTER_ENDPOINTS=udp:0.0.0.0:14550,udp:cti-interceptor:19552
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    labels:
+      dvd.component: "companion-computer"
+      dvd.drone_id: "honey_02"
+      dvd.attacker_facing: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  # ════════════════════════════════
+  # HONEY DRONE 03
+  # ════════════════════════════════
+  fcu-honey-03:
+    <<: *fcu-base
+    container_name: fcu_honey_03
+    hostname: fcu-honey-03
+    ports:
+      - "127.0.0.1:5763:5760"
+    environment:
+      - DRONE_ID=honey_03
+      - DRONE_ROLE=honeypot
+      - SITL_TCP_PORT=5760
+      - COMPANION_COMPUTER_HOST=cc-honey-03
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    labels:
+      dvd.component: "flight-controller"
+      dvd.drone_id: "honey_03"
+      dvd.attacker_facing: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5760 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  cc-honey-03:
+    <<: *cc-base
+    container_name: cc_honey_03
+    hostname: cc-honey-03
+    depends_on:
+      fcu-honey-03:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:14553:14550/udp"
+      - "127.0.0.1:8083:80"
+      - "0.0.0.0:8556:8554/tcp"
+    environment:
+      - DRONE_ID=honey_03
+      - DRONE_ROLE=honeypot
+      - FCU_HOST=fcu-honey-03
+      - FCU_PORT=5760
+      - MAVLINK_PORT=14550
+      - RTSP_PORT=8554
+      - WEB_PORT=80
+      - MAVLINK_ROUTER_ENDPOINTS=udp:0.0.0.0:14550,udp:cti-interceptor:19553
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    labels:
+      dvd.component: "companion-computer"
+      dvd.drone_id: "honey_03"
+      dvd.attacker_facing: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  # ════════════════════════════════
+  # DVD Simulator (lite — Gazebo 없음)
+  # 관리 콘솔: http://localhost:8000
+  # 비행 상태 트리거: Boot/Arm/Takeoff/Land
+  # ════════════════════════════════
+  simulator:
+    image: nicholasaleks/dvd-simulator:lite
+    container_name: dvd_simulator
+    hostname: simulator
+    networks:
+      - sim_net
+      - internal
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - SIMULATOR_MODE=lite
+      - DRONE_TARGETS=fcu-honey-01:5760,fcu-honey-02:5760,fcu-honey-03:5760
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./results/logs:/app/logs:rw
+    mem_limit: 512m
+    cpus: "0.5"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - fcu-honey-01
+      - fcu-honey-02
+      - fcu-honey-03
+
+  # ════════════════════════════════
+  # CTI Interceptor
+  # [ROLE] CC MAVLink Router 포워딩 트래픽을 passive tap으로 수신
+  # [DATA FLOW]
+  #   cc-honey-0N (MAVLINK_ROUTER_ENDPOINTS)
+  #   ──▶ UDP 19551/19552/19553 (internal)
+  #   ──▶ MavlinkInterceptor (asyncio)
+  #   ──▶ AttackEventParser (L0-L4 분류)
+  #   ──▶ POST cti-api:8765/ingest/event
+  # ════════════════════════════════
+  cti-interceptor:
+    image: python:3.11-slim
+    container_name: cti_interceptor
+    hostname: cti-interceptor
+    networks:
+      - internal
+    ports:
+      - "127.0.0.1:19551:19551/udp"
+      - "127.0.0.1:19552:19552/udp"
+      - "127.0.0.1:19553:19553/udp"
+    volumes:
+      - ./src:/app/src:ro
+      - ./config/.env:/app/.env:ro
+      - ./results:/app/results:rw
+    working_dir: /app
+    command: >
+      sh -c "pip install -q pymavlink python-dotenv structlog stix2 aiohttp &&
+             python -m src.honey_drone.mavlink_interceptor"
+    environment:
+      - HONEY_DRONE_COUNT=${HONEY_DRONE_COUNT:-3}
+      - MAVLINK_PORT_BASE=${MAVLINK_PORT_BASE:-14550}
+      - CTI_API_HOST=cti-api
+      - CTI_API_PORT=${CTI_API_PORT:-8765}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    mem_limit: 256m
+    cpus: "0.5"
+    depends_on:
+      - cc-honey-01
+      - cc-honey-02
+      - cc-honey-03
+
+  # ════════════════════════════════
+  # CTI Ingest API
+  # [ROLE] STIX 2.1 변환 후 RL 에이전트로 이벤트 전달
+  # [DATA FLOW]
+  #   cti-interceptor ──▶ POST /ingest/event
+  #   ──▶ STIXConverter ──▶ asyncio.Queue
+  #   ──▶ RL Agent (WSL2 host process)
+  # ════════════════════════════════
+  cti-api:
+    image: python:3.11-slim
+    container_name: cti_ingest_api
+    hostname: cti-api
+    networks:
+      - internal
+    ports:
+      - "127.0.0.1:${CTI_API_PORT:-8765}:8765"
+    volumes:
+      - ./src:/app/src:ro
+      - ./config/.env:/app/.env:ro
+      - ./results:/app/results:rw
+    working_dir: /app
+    command: >
+      sh -c "pip install -q fastapi uvicorn python-dotenv stix2 structlog &&
+             uvicorn src.cti_pipeline.cti_ingest_api:app
+             --host 0.0.0.0 --port 8765 --log-level info"
+    environment:
+      - CTI_API_HOST=0.0.0.0
+      - CTI_API_PORT=8765
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8765/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 256m
+    cpus: "0.5"
+    depends_on:
+      - cti-interceptor
+
+# ── Networks ─────────────────────────────────────────────────
+networks:
+  honey_net:
+    name: ${DOCKER_NETWORK_NAME:-honey_isolated}
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "172.30.0.0/24"
+          gateway: "172.30.0.1"
+
+  internal:
+    name: honey_internal
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: "172.31.0.0/24"
+
+  sim_net:
+    name: honey_sim
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: "172.32.0.0/24"

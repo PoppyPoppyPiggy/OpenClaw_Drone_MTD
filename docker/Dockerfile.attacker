@@ -1,0 +1,31 @@
+# Dockerfile.attacker — MIRAGE-UAS Attacker Simulator
+#
+# Project  : MIRAGE-UAS
+# Author   : DS Lab / 민성 <kmseong0508@kyonggi.ac.kr>
+# Created  : 2026-04-06
+#
+# [ROLE] L0-L4 자동화 공격 시뮬레이터 이미지
+# [DATA FLOW]
+#   docker build -f docker/Dockerfile.attacker -t mirage-attacker:latest .
+#   docker run --network test_net mirage-attacker:latest
+
+FROM python:3.11-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        nmap \
+        netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    pymavlink \
+    scapy \
+    requests \
+    websockets \
+    aiohttp
+
+WORKDIR /app
+
+COPY scripts/attacker_sim.py /app/attacker_sim.py
+
+ENTRYPOINT ["python", "attacker_sim.py"]
