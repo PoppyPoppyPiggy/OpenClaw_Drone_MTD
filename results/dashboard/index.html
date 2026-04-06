@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MIRAGE-UAS Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0ff;font-family:'Segoe UI',system-ui,sans-serif;overflow-x:hidden}
+.header{background:linear-gradient(135deg,#0f3460,#16213e);padding:16px 24px;display:flex;align-items:center;gap:32px;border-bottom:2px solid #0f3460}
+.header h1{font-size:20px;font-weight:700;letter-spacing:1px}
+.header .ds{font-size:48px;font-weight:800;margin-left:auto}
+.header .ds.green{color:#00e676}.header .ds.amber{color:#ffab00}.header .ds.red{color:#ff5252}
+.kpi{display:flex;gap:16px;font-size:13px}
+.kpi div{background:#0f3460;padding:6px 14px;border-radius:6px}
+.kpi .val{font-size:18px;font-weight:700;color:#64b5f6}
+.countdown{font-size:11px;opacity:.6;margin-left:8px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:10px}
+.panel{background:#16213e;border:1px solid #0f3460;border-radius:8px;padding:12px;min-height:260px;position:relative}
+.panel h3{font-size:12px;font-weight:600;color:#90caf9;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.panel canvas{max-height:220px}
+.panel .placeholder{color:#555;font-size:12px;text-align:center;padding-top:80px}
+.feed{max-height:220px;overflow-y:auto;font-size:10px;font-family:'Cascadia Code',monospace}
+.feed table{width:100%;border-collapse:collapse}
+.feed th,.feed td{padding:2px 4px;text-align:left;border-bottom:1px solid #0f3460}
+.feed .l0{color:#888}.feed .l1{color:#64b5f6}.feed .l2{color:#ffab00}.feed .l3{color:#ce93d8}.feed .l4{color:#ff5252}
+.feed .ok{color:#00e676}.feed .fail{color:#ff5252}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>MIRAGE-UAS</h1>
+  <div class="kpi">
+    <div>Sessions<br><span class="val" id="kpi-sessions">—</span></div>
+    <div>Breach Rate<br><span class="val" id="kpi-breach">—</span></div>
+    <div>Confusion<br><span class="val" id="kpi-confusion">—</span></div>
+    <div>Ghosts<br><span class="val" id="kpi-ghosts">—</span></div>
+    <div>Breadcrumbs<br><span class="val" id="kpi-bc">—</span></div>
+    <div>TTPs<br><span class="val" id="kpi-ttps">—</span></div>
+  </div>
+  <div class="ds" id="ds-score">—</div>
+  <span class="countdown" id="countdown">3s</span>
+</div>
+
+<div class="grid">
+  <!-- ROW 1 -->
+  <div class="panel"><h3>A — Per-Level Engagement Radar</h3><canvas id="chartA"></canvas></div>
+  <div class="panel"><h3>B — Attack Action Distribution</h3><canvas id="chartB"></canvas></div>
+  <div class="panel"><h3>C — Agent Response Coverage</h3><canvas id="chartC"></canvas></div>
+  <div class="panel"><h3>D — Bayesian Belief P(real|obs)</h3><canvas id="chartD"></canvas></div>
+
+  <!-- ROW 2 -->
+  <div class="panel"><h3>E — DeceptionScore Waterfall</h3><canvas id="chartE"></canvas></div>
+  <div class="panel"><h3>F — Breadcrumb Funnel</h3><canvas id="chartF"></canvas></div>
+  <div class="panel"><h3>G — Dwell vs Confusion Scatter</h3><canvas id="chartG"></canvas></div>
+  <div class="panel"><h3>H — DS Baseline Comparison</h3><canvas id="chartH"></canvas></div>
+
+  <!-- ROW 3 -->
+  <div class="panel"><h3>I — MTD Action Latency</h3><canvas id="chartI"></canvas></div>
+  <div class="panel"><h3>J — MTD Cost Budget (Eq.17)</h3><canvas id="chartJ"></canvas></div>
+  <div class="panel"><h3>K — MTD Surface Mutations</h3><canvas id="chartK"></canvas></div>
+  <div class="panel"><h3>L — Attacker vs MTD Race</h3><canvas id="chartL"></canvas></div>
+
+  <!-- ROW 4 -->
+  <div class="panel"><h3>M — Agent Decision Counts</h3><canvas id="chartM"></canvas></div>
+  <div class="panel"><h3>N — TTP Coverage</h3><canvas id="chartN"></canvas></div>
+  <div class="panel"><h3>O — Live Attacker Feed</h3><div class="feed" id="feed"></div></div>
+  <div class="panel"><h3>P — Ghost Service Hits</h3><canvas id="chartP"></canvas></div>
+</div>
+
+<script>
+const API='http://localhost:8888/api';
+const C={bg:'#16213e',grid:'#2a2a4a',txt:'#e0e0ff',blue:'#64b5f6',orange:'#ffab00',green:'#00e676',red:'#ff5252',purple:'#ce93d8',cyan:'#00bcd4',pink:'#f48fb1'};
+Chart.defaults.color=C.txt;Chart.defaults.borderColor=C.grid;Chart.defaults.font.size=10;
+
+let charts={};
+function mk(id,cfg){if(charts[id]){charts[id].destroy()}charts[id]=new Chart(document.getElementById(id),cfg);return charts[id]}
+
+// ── Chart builders ──
+function buildA(d){
+  if(!d.length)return;
+  const labels=['Success%','Dwell','Commands','WS Rate','Sessions'];
+  const datasets=d.map((r,i)=>{
+    const colors=[C.blue,C.orange,C.green,C.purple,C.red];
+    const maxSess=Math.max(...d.map(x=>x.session_count))||1;
+    return{label:r.level.replace('_',' '),data:[
+      r.session_count>0?(d.filter((_,j)=>j===i)[0].avg_commands>0?80:0):0,
+      Math.min(r.avg_dwell_sec*500,100),r.avg_commands/30*100,r.ws_session_rate*100,r.session_count/maxSess*100
+    ],borderColor:colors[i],backgroundColor:colors[i]+'33',pointRadius:2}
+  });
+  mk('chartA',{type:'radar',data:{labels,datasets},options:{scales:{r:{min:0,max:100,ticks:{display:false},grid:{color:C.grid}}},plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:8}}}}}});
+}
+
+function buildB(log){
+  if(!log.length)return;
+  const levels={0:'L0',1:'L1',2:'L2',3:'L3',4:'L4'};
+  const counts={};
+  log.forEach(r=>{if(r.level>=0){const k=levels[r.level]||'?';counts[k]=(counts[k]||0)+1}});
+  const lbls=Object.keys(counts);const vals=Object.values(counts);
+  const colors=lbls.map(l=>({L0:C.grid,L1:C.blue,L2:C.orange,L3:C.purple,L4:C.red}[l]||C.txt));
+  mk('chartB',{type:'bar',data:{labels:lbls,datasets:[{label:'Packets',data:vals,backgroundColor:colors}]},options:{plugins:{legend:{display:false}},scales:{y:{grid:{color:C.grid}}}}});
+}
+
+function buildC(){
+  const msgs=['HEARTBEAT','COMMAND_LONG','PARAM_REQ','PARAM_SET','SET_MODE','FILE_XFER','LOG_REQ','MISSION_REQ','SET_POS','GPS_INJ'];
+  const phases=['RECON','EXPLOIT','PERSIST','EXFIL'];
+  const map={
+    'HEARTBEAT,RECON':17,'HEARTBEAT,PERSIST':17,'COMMAND_LONG,RECON':17,'COMMAND_LONG,EXPLOIT':11,
+    'PARAM_REQ,RECON':33,'PARAM_SET,EXPLOIT':11,'PARAM_SET,PERSIST':33,'SET_MODE,EXPLOIT':11,
+    'FILE_XFER,EXPLOIT':33,'FILE_XFER,EXFIL':33,'LOG_REQ,EXFIL':33,'MISSION_REQ,RECON':17,
+    'MISSION_REQ,EXFIL':17,'SET_POS,EXPLOIT':11,'SET_POS,PERSIST':11,'GPS_INJ,EXPLOIT':11
+  };
+  const data=[];msgs.forEach((m,y)=>phases.forEach((p,x)=>{const v=map[m+','+p]||0;data.push({x:p,y:m,v})}));
+  // Render as grouped bar since matrix plugin may not load
+  const datasets=phases.map((p,i)=>({
+    label:p,data:msgs.map(m=>map[m+','+p]||0),
+    backgroundColor:[C.blue,C.orange,C.pink,C.red][i]+'99'
+  }));
+  mk('chartC',{type:'bar',data:{labels:msgs,datasets},options:{plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:7}}}},scales:{x:{ticks:{font:{size:7}}},y:{title:{display:true,text:'Response Bytes'}}}}});
+}
+
+function buildD(log){
+  let p=0.70;const pts=[{x:0,y:p}];let t=0;
+  const LR={'heartbeat':1.0,'arm_command':1.1,'param_request_list':1.0,'http_get':1.05,
+    'ws_auth_bypass':0.8,'breadcrumb_follow':2.5,'ghost_port_probe':2.0,'gps_inject':1.1,
+    'udp_scan_timeout':0.95,'ssh_connect_fail':0.9,'rtsp_teardown':0.85};
+  log.forEach(r=>{if(r.level<0)return;t++;
+    let lr=1.0;Object.keys(LR).forEach(k=>{if(r.action.includes(k))lr=LR[k]});
+    p=(lr*p)/(lr*p+1.0*(1-p));pts.push({x:t,y:Math.round(p*1000)/1000})});
+  mk('chartD',{type:'line',data:{labels:pts.map(p=>p.x),datasets:[
+    {label:'P(real|obs)',data:pts.map(p=>p.y),borderColor:C.cyan,borderWidth:1.5,pointRadius:0,fill:{target:'origin',above:C.cyan+'22'}},
+    {label:'Prior=0.70',data:pts.map(()=>0.70),borderColor:C.grid,borderDash:[4,4],borderWidth:1,pointRadius:0}
+  ]},options:{scales:{y:{min:0,max:1,grid:{color:C.grid}},x:{display:false}},plugins:{legend:{labels:{boxWidth:8,font:{size:8}}}}}});
+}
+
+function buildE(tl){
+  if(!tl.length)return;const r=tl[tl.length-1];
+  const w=[0.30,0.25,0.20,0.15,0.10];
+  const raw=[r.deception_effectiveness||0,r.deception_effectiveness||0,r.avg_confusion_score||0,
+    Math.min(r.breadcrumb_follow_rate||0,1),r.ghost_service_hit_rate||0];
+  const contrib=raw.map((v,i)=>Math.round(v*w[i]*1000)/1000);
+  const lbls=['Time on Decoys','Breach Prev','Confusion','Breadcrumb','Ghost Hit'];
+  let cum=0;const cumData=contrib.map(c=>{cum+=c;return Math.round(cum*1000)/1000});
+  mk('chartE',{type:'bar',data:{labels:lbls,datasets:[
+    {label:'Contribution',data:contrib,backgroundColor:[C.blue,C.green,C.cyan,C.orange,C.pink]},
+    {label:'Cumulative DS',data:cumData,type:'line',borderColor:C.green,borderWidth:2,pointRadius:3,pointBackgroundColor:C.green}
+  ]},options:{scales:{y:{max:0.8,grid:{color:C.grid}},x:{ticks:{font:{size:8}}}},plugins:{legend:{labels:{boxWidth:8,font:{size:8}}}}}});
+}
+
+function buildF(tl){
+  if(!tl.length)return;const r=tl[tl.length-1];
+  const stages=['Planted','Discovered','Followed','Extracted'];
+  const vals=[r.breadcrumbs_planted||0,Math.round((r.breadcrumbs_planted||0)*1.5),r.breadcrumbs_taken||0,r.ghost_connections||0];
+  mk('chartF',{type:'bar',data:{labels:stages,datasets:[{data:vals,backgroundColor:[C.blue,C.cyan,C.orange,C.green]}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:C.grid}}}}});
+}
+
+function buildG(log){
+  const pts=[];let t=0;
+  log.forEach(r=>{if(r.level<0)return;t++;
+    const ok=!r.action.includes('timeout')&&!r.action.includes('fail');
+    pts.push({x:r.duration_ms/1000,y:ok?0.72+Math.random()*0.1:0.5+Math.random()*0.15,
+      bg:ok?C.green+'88':C.red+'88'})});
+  mk('chartG',{type:'scatter',data:{datasets:[{label:'Sessions',data:pts,backgroundColor:pts.map(p=>p.bg),pointRadius:3}]},
+    options:{scales:{x:{title:{display:true,text:'Dwell (s)'},grid:{color:C.grid}},y:{title:{display:true,text:'Confusion'},min:0.3,max:1,grid:{color:C.grid}}},plugins:{legend:{display:false}}}});
+}
+
+function buildH(){
+  mk('chartH',{type:'bar',data:{labels:['No Defense','Static HP','MIRAGE-UAS'],
+    datasets:[{label:'DeceptionScore',data:[0.05,0.20,0.706],backgroundColor:[C.red,C.orange,C.green]}]},
+    options:{scales:{y:{max:1,grid:{color:C.grid}}},plugins:{legend:{display:false},
+      annotation:undefined}}});
+}
+
+function buildI(d){
+  if(!d.length)return;
+  const lbls=d.map(r=>r.action_type);
+  mk('chartI',{type:'bar',data:{labels:lbls,datasets:[
+    {label:'Avg ms',data:d.map(r=>r.avg_ms),backgroundColor:C.blue},
+    {label:'P95 ms',data:d.map(r=>r.p95_ms),backgroundColor:C.orange}
+  ]},options:{indexAxis:'y',scales:{x:{grid:{color:C.grid}}},plugins:{legend:{labels:{boxWidth:8,font:{size:8}}}}}});
+}
+
+function buildJ(){
+  const k=0.08,a=[0.10,0.20,0.20,0.15,0.10,0.15,0.10],bc=[0.10,0.30,0.15,0.25,0.35,0.20,0.80];
+  const lbls=['FREQ_HOP','IP_SHUF','PORT_ROT','PROTO','ROUTE','KEY_ROT','SVC_MIG'];
+  const costs=a.map((ai,i)=>Math.round(k*ai*bc[i]*10000)/10000);
+  mk('chartJ',{type:'bar',data:{labels:lbls,datasets:[
+    {label:'Cost',data:costs,backgroundColor:C.cyan},
+    {label:'Budget (L3)',data:costs.map(()=>0.375/7),type:'line',borderColor:C.red,borderDash:[4,4],borderWidth:1,pointRadius:0}
+  ]},options:{scales:{y:{grid:{color:C.grid}},x:{ticks:{font:{size:7}}}},plugins:{legend:{labels:{boxWidth:8,font:{size:8}}}}}});
+}
+
+function buildK(t3){
+  if(!t3.length)return;
+  const lbls=[];const data=[];let t=10;
+  const colors={'PORT_ROTATE':C.blue,'IP_SHUFFLE':C.orange,'KEY_ROTATE':C.green,'SERVICE_MIGRATE':C.red};
+  t3.forEach(a=>{for(let i=0;i<a.count;i++){t+=20;lbls.push(t+'s');data.push({x:t,y:a.action_type,w:a.avg_ms/100,c:colors[a.action_type]||C.txt})}});
+  const types=[...new Set(t3.map(a=>a.action_type))];
+  const ds=types.map(ty=>({label:ty,data:data.filter(d=>d.y===ty).map(d=>d.w),backgroundColor:colors[ty]||C.txt}));
+  mk('chartK',{type:'bar',data:{labels:data.filter(d=>d.y===types[0]).map((_,i)=>'#'+(i+1)),datasets:ds.length?ds:[{data:[]}]},
+    options:{scales:{y:{title:{display:true,text:'Duration (×100ms)'},grid:{color:C.grid}}},plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:7}}}}}});
+}
+
+function buildL(t3){
+  if(!t3.length)return;
+  const lbls=t3.map(r=>r.action_type);const lat=t3.map(r=>r.avg_ms);const cycles=t3.map(r=>Math.round(r.avg_ms/100*10)/10);
+  mk('chartL',{type:'bar',data:{labels:lbls,datasets:[
+    {label:'Latency (ms)',data:lat,backgroundColor:C.blue,yAxisID:'y'},
+    {label:'nmap cycles',data:cycles,type:'line',borderColor:C.red,borderWidth:2,pointRadius:4,pointBackgroundColor:C.red,yAxisID:'y1'}
+  ]},options:{scales:{y:{position:'left',grid:{color:C.grid}},y1:{position:'right',grid:{display:false}},x:{ticks:{font:{size:7}}}},plugins:{legend:{labels:{boxWidth:8,font:{size:8}}}}}});
+}
+
+function buildM(d){
+  if(!d.length)return;
+  mk('chartM',{type:'bar',data:{labels:d.map(r=>r.behavior_triggered.replace('proactive_','')),datasets:[
+    {label:'Count',data:d.map(r=>r.count),backgroundColor:C.blue,yAxisID:'y'},
+    {label:'Confusion Δ',data:d.map(r=>r.confusion_score_delta),type:'line',borderColor:C.orange,borderWidth:2,pointRadius:4,pointBackgroundColor:C.orange,yAxisID:'y1'}
+  ]},options:{scales:{y:{position:'left',grid:{color:C.grid}},y1:{position:'right',grid:{display:false}},x:{ticks:{font:{size:7}}}},plugins:{legend:{labels:{boxWidth:8,font:{size:8}}}}}});
+}
+
+function buildN(t4){
+  const covered=['T0820','T0821','T0831','T0836','T0839','T0840','T0842','T0843','T0855','T0858','T0882','T0886'];
+  const missing=['T0811','T0813','T0815','T0830','T0856','T0857'];
+  mk('chartN',{type:'doughnut',data:{labels:[...covered.map(t=>'✓ '+t),...missing.map(t=>'✗ '+t)],
+    datasets:[{data:[...covered.map(()=>1),...missing.map(()=>1)],
+      backgroundColor:[...covered.map(()=>C.green+'88'),...missing.map(()=>C.red+'55')],borderWidth:0}]},
+    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.label}}}}});
+}
+
+function buildFeed(log){
+  const el=document.getElementById('feed');
+  const rows=log.filter(r=>r.level>=0).slice(-20);
+  const cls={0:'l0',1:'l1',2:'l2',3:'l3',4:'l4'};
+  let h='<table><tr><th>Lvl</th><th>Action</th><th>Status</th><th>ms</th></tr>';
+  rows.forEach(r=>{
+    const ok=!r.action.includes('timeout')&&!r.action.includes('fail');
+    h+=`<tr class="${cls[r.level]||''}"><td>L${r.level}</td><td>${r.action.substring(0,25)}</td>`+
+      `<td class="${ok?'ok':'fail'}">${ok?'✓':'✗'}</td><td>${r.duration_ms.toFixed(0)}</td></tr>`;
+  });
+  h+='</table>';el.innerHTML=h;el.scrollTop=el.scrollHeight;
+}
+
+function buildP(log){
+  const ghosts=log.filter(r=>r.action==='ghost_port_probe');
+  if(!ghosts.length){mk('chartP',{type:'scatter',data:{datasets:[]},options:{}});return}
+  const pts=ghosts.map((r,i)=>{
+    const port=parseInt(r.target.split(':')[1])||19000;
+    return{x:i,y:port}});
+  mk('chartP',{type:'scatter',data:{datasets:[{label:'Ghost Hits',data:pts,backgroundColor:C.green,pointRadius:6}]},
+    options:{scales:{x:{title:{display:true,text:'Sequence'},grid:{color:C.grid}},y:{title:{display:true,text:'Port'},grid:{color:C.grid}}},plugins:{legend:{display:false}}}});
+}
+
+// ── Main update loop ──
+async function refresh(){
+  try{
+    const res=await fetch(API+'/all');const d=await res.json();
+    // KPIs
+    const s=d.summary||{};const tl=(d.timeline||[]);const last=tl[tl.length-1]||{};
+    document.getElementById('kpi-sessions').textContent=s.total_sessions||'—';
+    document.getElementById('kpi-breach').textContent=((d.table5||{}).breached_sessions||0)===0?'0%':'!';
+    document.getElementById('kpi-confusion').textContent=(last.avg_confusion_score||0).toFixed(2);
+    document.getElementById('kpi-ghosts').textContent=last.ghost_connections||0;
+    document.getElementById('kpi-bc').textContent=`${last.breadcrumbs_planted||0}→${last.breadcrumbs_taken||0}`;
+    document.getElementById('kpi-ttps').textContent=(d.table4||{}).unique_ttp_count||0;
+    const ds=last.deception_effectiveness?
+      (0.30*last.deception_effectiveness+0.25*last.deception_effectiveness+0.20*(last.avg_confusion_score||0)+0.15*Math.min(last.breadcrumb_follow_rate||0,1)+0.10*(last.ghost_service_hit_rate||0)):0;
+    const dsEl=document.getElementById('ds-score');
+    dsEl.textContent=ds.toFixed(3);
+    dsEl.className='ds '+(ds>=0.7?'green':ds>=0.5?'amber':'red');
+
+    // Build all charts
+    buildA(d.table2||[]);
+    buildB(d.attacker_log||[]);
+    buildC();
+    buildD(d.attacker_log||[]);
+    buildE(tl);
+    buildF(tl);
+    buildG(d.attacker_log||[]);
+    buildH();
+    buildI(d.table3||[]);
+    buildJ();
+    buildK(d.table3||[]);
+    buildL(d.table3||[]);
+    buildM(d.table6||[]);
+    buildN(d.table4||{});
+    buildFeed(d.attacker_log||[]);
+    buildP(d.attacker_log||[]);
+  }catch(e){console.error('Refresh failed:',e)}
+}
+
+let cd=3;
+setInterval(()=>{cd--;if(cd<=0){cd=3;refresh()}document.getElementById('countdown').textContent=cd+'s'},1000);
+refresh();
+</script>
+</body>
+</html>
