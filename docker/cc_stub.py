@@ -95,12 +95,13 @@ def _statustext_bytes(text):
 # ── MAVLink UDP :14550 ────────────────────────────────────────────────────────
 
 async def _forward_to_engine(loop, data, engine_host, engine_port):
-    """[ROLE] Forward MAVLink to real OpenClawAgent on host, return response or None."""
+    """[ROLE] Forward MAVLink to real OpenClawAgent on host, return response or None.
+    Timeout 3s to allow engine processing time."""
     try:
         fwd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         fwd.setblocking(False)
         await loop.sock_sendto(fwd, data, (engine_host, engine_port))
-        response = await asyncio.wait_for(loop.sock_recv(fwd, 4096), timeout=1.0)
+        response = await asyncio.wait_for(loop.sock_recv(fwd, 4096), timeout=3.0)
         fwd.close()
         return response
     except Exception:

@@ -142,7 +142,28 @@ live_path = Path('results/metrics/live_mtd_results.json')
 if live_path.exists():
     live_mtd = json.loads(live_path.read_text())
 
-ds = 0.30*eff + 0.25*eff + 0.20*0.72 + 0.15*min(bc_follow/max(bc_plant,1),1.0) + 0.10*min(ghost/max(total,1),1.0)
+# Read REAL confusion score from engine (not hardcoded)
+confusion_path = Path('results/metrics/confusion_scores.json')
+if confusion_path.exists():
+    confusion_data = json.loads(confusion_path.read_text())
+    avg_confusion = confusion_data.get('avg_confusion_score', 0.70)
+    print(f'  Confusion score: {avg_confusion:.4f} (REAL from DeceptionStateManager)')
+else:
+    avg_confusion = 0.70  # prior — no observations yet
+    print(f'  Confusion score: {avg_confusion} (prior — no engine data)')
+
+# Read REAL TTP count from engine CTI consumer (not hardcoded)
+cti_path = Path('results/metrics/live_cti_summary.json')
+if cti_path.exists():
+    cti_data = json.loads(cti_path.read_text())
+    unique_ttps = cti_data.get('unique_ttp_count', 0)
+else:
+    unique_ttps = 0
+
+# Read REAL MTD action count (not hardcoded)
+mtd_count = len(live_mtd)
+
+ds = 0.30*eff + 0.25*eff + 0.20*avg_confusion + 0.15*min(bc_follow/max(bc_plant,1),1.0) + 0.10*min(ghost/max(total,1),1.0)
 
 engine_mode = 'real_openclaw' if Path('results/.engine_running').exists() else 'stub'
 
@@ -154,13 +175,15 @@ summary = {
     'total_sessions': total,
     'successful_engagements': ok,
     'engagement_rate': round(eff, 4),
-    'total_mtd_actions': len(live_mtd),
+    'total_mtd_actions': mtd_count,
     'deception_score': round(ds, 4),
+    'avg_confusion_score': round(avg_confusion, 4),
+    'confusion_source': 'real_bayesian' if confusion_path.exists() else 'prior',
     'breadcrumbs_planted': bc_plant,
     'breadcrumbs_followed': bc_follow,
     'ghost_connections': ghost,
     'dataset_size': total,
-    'unique_ttps': 12,
+    'unique_ttps': unique_ttps,
 }
 Path('results/metrics').mkdir(parents=True, exist_ok=True)
 json.dump(summary, open('results/metrics/summary.json','w'), indent=2)

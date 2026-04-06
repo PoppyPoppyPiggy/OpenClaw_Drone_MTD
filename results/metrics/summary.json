@@ -3,14 +3,16 @@
   "engine_mode": "real_openclaw",
   "duration_sec": 180,
   "honey_drone_count": 3,
-  "total_sessions": 228,
-  "successful_engagements": 175,
-  "engagement_rate": 0.7675,
-  "total_mtd_actions": 0,
-  "deception_score": 0.7188,
+  "total_sessions": 192,
+  "successful_engagements": 131,
+  "engagement_rate": 0.6823,
+  "total_mtd_actions": 24,
+  "deception_score": 0.723,
+  "avg_confusion_score": 0.9729,
+  "confusion_source": "real_bayesian",
   "breadcrumbs_planted": 30,
   "breadcrumbs_followed": 31,
   "ghost_connections": 6,
-  "dataset_size": 228,
-  "unique_ttps": 12
+  "dataset_size": 192,
+  "unique_ttps": 1
 }

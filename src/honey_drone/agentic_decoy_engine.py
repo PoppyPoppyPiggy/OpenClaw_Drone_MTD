@@ -71,6 +71,7 @@ from shared.models import (
 from honey_drone.engagement_tracker import EngagementTracker
 from honey_drone.mavlink_response_gen import MavlinkResponseGenerator
 from honey_drone.openclaw_agent import OpenClawAgent
+from honey_drone.deception_state_manager import DeceptionStateManager, ObservationType
 
 logger = get_logger(__name__)
 
@@ -108,6 +109,7 @@ class AgenticDecoyEngine:
         self._tracker            = EngagementTracker()
         self._response_gen       = MavlinkResponseGenerator(config)
         self._openclaw_agent     = OpenClawAgent(config, mtd_trigger_q, cti_event_output_q)
+        self._belief_mgr         = DeceptionStateManager(config.drone_id)
         self._status             = DroneStatus.IDLE
         self._tasks: list[asyncio.Task] = []
         # UDP 소켓 (MAVLink 응답용)
@@ -172,6 +174,37 @@ class AgenticDecoyEngine:
         await self._tracker.stop()
         self._status = DroneStatus.TERMINATED
         logger.info("agentic_decoy_engine stopped", drone_id=self._config.drone_id)
+
+    def get_avg_confusion(self) -> float:
+        """
+        [ROLE] 실제 베이지안 믿음 상태에서 평균 confusion score 반환.
+
+        [DATA FLOW]
+            DeceptionStateManager.get_all_beliefs() ──▶ avg P(real|obs)
+        """
+        beliefs = self._belief_mgr.get_all_beliefs()
+        if not beliefs:
+            return 0.70  # prior (아직 관측 없음)
+        return sum(b.p_believes_real for b in beliefs) / len(beliefs)
+
+    def get_belief_states(self) -> list:
+        """
+        [ROLE] 모든 공격자 믿음 상태 반환 (메트릭 저장용).
+
+        [DATA FLOW]
+            DeceptionStateManager ──▶ list[dict]
+        """
+        return [
+            {
+                "attacker_ip": b.attacker_ip,
+                "p_believes_real": round(b.p_believes_real, 4),
+                "total_observations": b.total_observations,
+                "breadcrumbs_seen": b.breadcrumbs_seen,
+                "ghost_interactions": b.ghost_interactions,
+                "belief_target": b.belief_target.value,
+            }
+            for b in self._belief_mgr.get_all_beliefs()
+        ]
 
     def ingest_captured_event(self, event: MavlinkCaptureEvent) -> None:
         """
@@ -300,6 +333,14 @@ class AgenticDecoyEngine:
         self._openclaw_agent.observe(event)
 
         metrics = await self._tracker.update_session(event)
+
+        # 베이지안 믿음 상태 갱신 (실제 DeceptionStateManager)
+        obs_type = ObservationType.PROTOCOL_INTERACT
+        if metrics.exploit_attempts > 0:
+            obs_type = ObservationType.EXPLOIT_ATTEMPT
+        elif event.msg_type in ("LOG_REQUEST_LIST", "FILE_TRANSFER_PROTOCOL"):
+            obs_type = ObservationType.EXPLOIT_ATTEMPT
+        await self._belief_mgr.observe_protocol_interaction(event.src_ip, event.protocol)
 
         # 적응형 응답 우선, 없으면 기본 응답 폴백
         response_bytes = self._openclaw_agent.generate_response(event)
