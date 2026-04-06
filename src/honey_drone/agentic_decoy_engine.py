@@ -198,7 +198,7 @@ class AgenticDecoyEngine:
             HoneyDroneConfig.mavlink_port ──▶ UDP socket bind (0.0.0.0)
         """
         self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._udp_sock.setblocking(False)
+        self._udp_sock.settimeout(2.0)  # blocking with timeout for run_in_executor
         self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self._udp_sock.bind(("0.0.0.0", self._config.mavlink_port))
@@ -214,6 +214,26 @@ class AgenticDecoyEngine:
                 error=str(e),
             )
 
+    async def _udp_recvfrom(self) -> tuple[bytes, tuple[str, int]]:
+        """
+        [ROLE] Python 3.9 호환 비동기 UDP recvfrom.
+
+        [DATA FLOW]
+            self._udp_sock.recvfrom() ──▶ (data, addr)
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._udp_sock.recvfrom, 2048)
+
+    async def _udp_sendto(self, data: bytes, addr: tuple[str, int]) -> None:
+        """
+        [ROLE] Python 3.9 호환 비동기 UDP sendto.
+
+        [DATA FLOW]
+            data ──▶ self._udp_sock.sendto(data, addr)
+        """
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._udp_sock.sendto, data, addr)
+
     async def _receive_loop(self) -> None:
         """
         [ROLE] MAVLink UDP 패킷 수신 루프.
@@ -223,11 +243,9 @@ class AgenticDecoyEngine:
             UDP recv ──▶ MavlinkCaptureEvent 생성
             ──▶ _process_mavlink_event()
         """
-        loop = asyncio.get_event_loop()
-
         while True:
             try:
-                data, addr = await loop.sock_recvfrom(self._udp_sock, 2048)  # type: ignore[arg-type]
+                data, addr = await self._udp_recvfrom()
                 session_id = self._get_or_create_session_id(addr[0])
                 event = MavlinkCaptureEvent(
                     drone_id=self._config.drone_id,
@@ -240,6 +258,18 @@ class AgenticDecoyEngine:
                 await self._process_mavlink_event(event, addr)
             except asyncio.CancelledError:
                 break
+            except socket.timeout:
+                # Normal — no packet within timeout, just loop again
+                continue
+            except OSError as e:
+                if "timed out" in str(e):
+                    continue
+                logger.error(
+                    "receive_loop error",
+                    drone_id=self._config.drone_id,
+                    error=str(e),
+                )
+                await asyncio.sleep(0.1)
             except Exception as e:
                 logger.error(
                     "receive_loop error",
@@ -278,8 +308,7 @@ class AgenticDecoyEngine:
 
         if response_bytes and self._udp_sock:
             try:
-                loop = asyncio.get_event_loop()
-                await loop.sock_sendto(self._udp_sock, response_bytes, addr)  # type: ignore[arg-type]
+                await self._udp_sendto(response_bytes, addr)
             except Exception as e:
                 logger.debug("response send failed", error=str(e))
 
@@ -419,7 +448,6 @@ class AgenticDecoyEngine:
             ──▶ response_gen.get_telemetry_packet()
             ──▶ UDP broadcast (all active attacker IPs)
         """
-        loop = asyncio.get_event_loop()
         while True:
             try:
                 await asyncio.sleep(_TELEMETRY_INTERVAL_SEC)
@@ -433,9 +461,9 @@ class AgenticDecoyEngine:
                 )
                 for m in all_metrics:
                     try:
-                        await loop.sock_sendto(
-                            self._udp_sock, tele_bytes,  # type: ignore[arg-type]
-                            (m.attacker_ip, self._config.mavlink_port)
+                        await self._udp_sendto(
+                            tele_bytes,
+                            (m.attacker_ip, self._config.mavlink_port),
                         )
                     except Exception:
                         pass
