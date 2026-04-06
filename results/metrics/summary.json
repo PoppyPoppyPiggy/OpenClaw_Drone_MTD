@@ -1,10 +1,16 @@
 {
-  "experiment_id": "docker-e2e",
-  "duration_sec": 167.0,
+  "experiment_id": "full-integrated",
+  "engine_mode": "real_openclaw",
+  "duration_sec": 180,
   "honey_drone_count": 3,
-  "total_sessions": 191,
-  "total_mtd_actions": 8,
-  "deception_success": 0.7435,
-  "dataset_size": 191,
+  "total_sessions": 228,
+  "successful_engagements": 175,
+  "engagement_rate": 0.7675,
+  "total_mtd_actions": 0,
+  "deception_score": 0.7188,
+  "breadcrumbs_planted": 30,
+  "breadcrumbs_followed": 31,
+  "ghost_connections": 6,
+  "dataset_size": 228,
   "unique_ttps": 12
 }

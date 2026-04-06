@@ -29,6 +29,8 @@ from aiohttp import web
 DRONE_ID = os.environ.get("DRONE_ID", "honey_01")
 _INDEX = int(DRONE_ID.split("_")[-1]) if "_" in DRONE_ID else 1
 _INTERCEPT_PORT = 19551
+_ENGINE_HOST = os.environ.get("ENGINE_HOST", "")  # host.docker.internal if set
+_ENGINE_PORT = int(os.environ.get("ENGINE_PORT", "0"))  # 14551/52/53 per drone
 
 # ── Breadcrumb generation ─────────────────────────────────────────────────────
 _SIGNING_KEY = hashlib.md5(DRONE_ID.encode()).hexdigest()
@@ -92,14 +94,35 @@ def _statustext_bytes(text):
 
 # ── MAVLink UDP :14550 ────────────────────────────────────────────────────────
 
+async def _forward_to_engine(loop, data, engine_host, engine_port):
+    """[ROLE] Forward MAVLink to real OpenClawAgent on host, return response or None."""
+    try:
+        fwd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        fwd.setblocking(False)
+        await loop.sock_sendto(fwd, data, (engine_host, engine_port))
+        response = await asyncio.wait_for(loop.sock_recv(fwd, 4096), timeout=1.0)
+        fwd.close()
+        return response
+    except Exception:
+        try:
+            fwd.close()
+        except Exception:
+            pass
+        return None
+
+
 async def mavlink_responder():
+    """[ROLE] MAVLink UDP handler — forwards to real engine if available, else stub."""
     global _mavlink_counter
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("0.0.0.0", 14550))
     sock.setblocking(False)
     loop = asyncio.get_event_loop()
-    _log("mavlink_started", port=14550)
+
+    engine_mode = "real" if _ENGINE_HOST and _ENGINE_PORT else "stub"
+    _log("mavlink_started", port=14550, engine_mode=engine_mode,
+         engine=f"{_ENGINE_HOST}:{_ENGINE_PORT}" if engine_mode == "real" else "none")
 
     fwd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     fwd_sock.setblocking(False)
@@ -110,36 +133,46 @@ async def mavlink_responder():
             _metrics["total_connections"] += 1
             _metrics["mavlink_responses"] += 1
 
-            # Forward to interceptor
+            # Forward copy to CTI interceptor (best-effort)
             try:
                 await loop.sock_sendto(fwd_sock, data, ("cti-interceptor", _INTERCEPT_PORT))
             except OSError:
                 pass
 
-            # Respond with heartbeat
-            await loop.sock_sendto(sock, _heartbeat_bytes(), addr)
+            # ── TRY REAL ENGINE FIRST ──
+            response = None
+            if engine_mode == "real":
+                response = await _forward_to_engine(loop, data, _ENGINE_HOST, _ENGINE_PORT)
 
-            # Every 10th packet: inject breadcrumb STATUSTEXT
-            _mavlink_counter += 1
-            if _mavlink_counter % 10 == 0:
-                msg = _STATUSTEXT_BREADCRUMBS[(_mavlink_counter // 10) % len(_STATUSTEXT_BREADCRUMBS)]
-                await loop.sock_sendto(sock, _statustext_bytes(msg), addr)
-                _metrics["breadcrumbs_planted"] += 1
+            if response:
+                # Real OpenClawAgent responded
+                await loop.sock_sendto(sock, response, addr)
+                _metrics["engine_responses"] = _metrics.get("engine_responses", 0) + 1
+            else:
+                # ── STUB FALLBACK ──
+                await loop.sock_sendto(sock, _heartbeat_bytes(), addr)
 
-            # PARAM_REQUEST → send params
-            if len(data) <= 8:
-                for i, p in enumerate(_PARAMS[:3]):
-                    name_b = p["name"].encode()[:16].ljust(16, b"\x00")
-                    pv = struct.pack("<f", p["value"]) + name_b + struct.pack("<BHH", 9, len(_PARAMS), i)
-                    await loop.sock_sendto(sock, pv, addr)
+                # Every 10th packet: breadcrumb STATUSTEXT
+                _mavlink_counter += 1
+                if _mavlink_counter % 10 == 0:
+                    msg = _STATUSTEXT_BREADCRUMBS[(_mavlink_counter // 10) % len(_STATUSTEXT_BREADCRUMBS)]
+                    await loop.sock_sendto(sock, _statustext_bytes(msg), addr)
+                    _metrics["breadcrumbs_planted"] += 1
 
-            # COMMAND_LONG → send ACK
-            if len(data) >= 14:
-                try:
-                    cmd = struct.unpack_from("<H", data, 0)[0]
-                    await loop.sock_sendto(sock, struct.pack("<HB", cmd, 0), addr)
-                except struct.error:
-                    pass
+                # PARAM_REQUEST → send params
+                if len(data) <= 8:
+                    for i, p in enumerate(_PARAMS[:3]):
+                        name_b = p["name"].encode()[:16].ljust(16, b"\x00")
+                        pv = struct.pack("<f", p["value"]) + name_b + struct.pack("<BHH", 9, len(_PARAMS), i)
+                        await loop.sock_sendto(sock, pv, addr)
+
+                # COMMAND_LONG → send ACK
+                if len(data) >= 14:
+                    try:
+                        cmd = struct.unpack_from("<H", data, 0)[0]
+                        await loop.sock_sendto(sock, struct.pack("<HB", cmd, 0), addr)
+                    except struct.error:
+                        pass
 
         except asyncio.CancelledError:
             break

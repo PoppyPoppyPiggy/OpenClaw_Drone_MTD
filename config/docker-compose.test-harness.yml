@@ -52,6 +52,10 @@ services:
         ipv4_address: "172.40.0.10"
     environment:
       - DRONE_ID=honey_01
+      - ENGINE_HOST=${ENGINE_HOST:-}
+      - ENGINE_PORT=14551
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       fcu-test-01:
         condition: service_healthy
@@ -74,6 +78,10 @@ services:
         ipv4_address: "172.40.0.11"
     environment:
       - DRONE_ID=honey_02
+      - ENGINE_HOST=${ENGINE_HOST:-}
+      - ENGINE_PORT=14552
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       fcu-test-02:
         condition: service_healthy
@@ -96,6 +104,10 @@ services:
         ipv4_address: "172.40.0.12"
     environment:
       - DRONE_ID=honey_03
+      - ENGINE_HOST=${ENGINE_HOST:-}
+      - ENGINE_PORT=14553
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       fcu-test-03:
         condition: service_healthy
