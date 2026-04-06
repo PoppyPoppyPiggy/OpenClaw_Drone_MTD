@@ -1,12 +1,12 @@
 {
-  "total_samples": 182,
-  "positive_count": 136,
-  "negative_count": 46,
-  "class_ratio": 0.34,
+  "total_samples": 191,
+  "positive_count": 142,
+  "negative_count": 49,
+  "class_ratio": 0.35,
   "by_protocol": {
     "mavlink": 111,
     "http": 17,
-    "websocket": 14
+    "websocket": 20
   },
   "unique_ttp_count": 12,
   "unique_ttps": []

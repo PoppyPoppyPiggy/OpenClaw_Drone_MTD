@@ -2,9 +2,9 @@
   "experiment_id": "docker-e2e",
   "duration_sec": 167.0,
   "honey_drone_count": 3,
-  "total_sessions": 182,
+  "total_sessions": 191,
   "total_mtd_actions": 8,
-  "deception_success": 0.7473,
-  "dataset_size": 182,
+  "deception_success": 0.7435,
+  "dataset_size": 191,
   "unique_ttps": 12
 }

@@ -542,6 +542,7 @@ class OpenClawAgent:
     async def _proactive_ghost_port(self) -> None:
         """
         [ROLE] BEHAVIOR 2c — 새 ghost 서비스 포트 개방 + STATUSTEXT 힌트.
+               _current_ws_port��� 힌트에 포함하여 포트 로테이션 효과 측정.
 
         [DATA FLOW]
             랜덤 포트 선택 ──▶ STATUSTEXT 힌트 생성 ──▶ 로그
@@ -549,12 +550,16 @@ class OpenClawAgent:
         ghost_port = random.randint(19000, 19500)
         self._record_decision(
             "proactive_ghost_port",
-            rationale=f"opened ghost port {ghost_port}",
+            rationale=(
+                f"opened ghost port {ghost_port}, "
+                f"ws hint :{self._current_ws_port}"
+            ),
         )
         logger.info(
             "proactive_ghost_port",
             drone_id=self._config.drone_id,
             port=ghost_port,
+            ws_port_hint=self._current_ws_port,
         )
 
     async def _proactive_reboot(self) -> None:
@@ -884,6 +889,7 @@ class OpenClawAgent:
         """
         [ROLE] RECON 단계 응답 — 풍부한 텔레메트리 + 가짜 파라미터 목록.
                공격자가 "금광 발견" 으로 인식하도록 유도.
+               COMMAND_LONG도 HEARTBEAT으로 응답 (참여 유지, exploit 탐지 숨김).
 
         [DATA FLOW]
             event ──▶ 풍부한 PARAM_VALUE / HEARTBEAT 응답
@@ -894,14 +900,22 @@ class OpenClawAgent:
             return self._build_heartbeat()
         if event.msg_type == "MISSION_REQUEST_LIST":
             return self._build_mission_count()
+        # COMMAND_LONG in RECON: respond with HEARTBEAT to stay engaged
+        # without revealing that we detected an exploit attempt
+        if event.msg_type == "COMMAND_LONG":
+            return self._build_heartbeat()
+        # REQUEST_DATA_STREAM: respond as alive drone
+        if event.msg_type == "REQUEST_DATA_STREAM":
+            return self._build_heartbeat()
         return None
 
     def _response_exploit(self, event: MavlinkCaptureEvent) -> Optional[bytes]:
         """
         [ROLE] EXPLOIT 단계 응답 — "부분 성공" 신호로 공격자 참여 유지.
+               모든 exploit-phase 명령에 긍정적 응답으로 세션 연장.
 
         [DATA FLOW]
-            event ──▶ COMMAND_ACK(ACCEPTED) + 가짜 토큰 힌트
+            event ──▶ COMMAND_ACK(ACCEPTED) / PARAM_VALUE / HEARTBEAT
         """
         if event.msg_type == "COMMAND_LONG":
             # ARM 명령 감지 → 이륙 crash 시뮬 예약
@@ -918,17 +932,40 @@ class OpenClawAgent:
             return self._build_command_ack(event)
         if event.msg_type in ("PARAM_SET", "SET_MODE"):
             return self._build_command_ack(event)
-        return None
+        # FILE_TRANSFER_PROTOCOL: fake file-ready response
+        if event.msg_type == "FILE_TRANSFER_PROTOCOL":
+            return self._build_param_value_rich()
+        # SET_POSITION_TARGET: acknowledge position change
+        if event.msg_type in ("SET_POSITION_TARGET_LOCAL_NED",
+                               "SET_POSITION_TARGET_GLOBAL_INT",
+                               "SET_ACTUATOR_CONTROL_TARGET"):
+            return self._build_command_ack(event)
+        # GPS_INJECT_DATA: acknowledge GPS injection (T0856)
+        if event.msg_type == "GPS_INJECT_DATA":
+            return self._build_command_ack(event)
+        # Fallback: HEARTBEAT to keep connection alive
+        return self._build_heartbeat()
 
     def _response_persist(self, event: MavlinkCaptureEvent) -> Optional[bytes]:
         """
         [ROLE] PERSIST 단계 응답 — 실제 운영자처럼 주기적 STATUSTEXT 포함.
+               MISSION_ITEM/PARAM_SET에 긍정 응답��로 공격자를 upload 루프에 유지.
 
         [DATA FLOW]
-            event ──▶ HEARTBEAT + STATUSTEXT 메시지
+            event ──▶ HEARTBEAT + STATUSTEXT + COMMAND_ACK
         """
         if event.msg_type == "HEARTBEAT":
             return self._build_heartbeat()
+        # MISSION_ITEM: request next waypoint to keep attacker uploading
+        if event.msg_type in ("MISSION_ITEM", "MISSION_ITEM_INT"):
+            return self._build_command_ack(event)
+        # PARAM_SET: acknowledge parameter write
+        if event.msg_type == "PARAM_SET":
+            return self._build_param_value_rich()
+        # SET_POSITION: acknowledge position target
+        if event.msg_type in ("SET_POSITION_TARGET_LOCAL_NED",
+                               "SET_POSITION_TARGET_GLOBAL_INT"):
+            return self._build_command_ack(event)
         return self._build_statustext(random.choice(_STATUS_MESSAGES_OPERATOR))
 
     def _response_exfil(self, event: MavlinkCaptureEvent) -> Optional[bytes]:

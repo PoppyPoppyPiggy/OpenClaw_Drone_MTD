@@ -1,8 +1,8 @@
 {
-  "total_sessions": 182,
+  "total_sessions": 191,
   "breached_sessions": 0,
-  "protected_sessions": 182,
+  "protected_sessions": 191,
   "success_rate": 1.0,
-  "avg_dwell_sec": 0.26,
-  "l3_l4_session_rate": 0.2967
+  "avg_dwell_sec": 0.27,
+  "l3_l4_session_rate": 0.3298
 }
