@@ -77,28 +77,18 @@ bash run.sh
 
 ## Architecture
 
-```
- Attacker (L0-L4)
-     │
-     ▼
- ┌─────────────────────────────────────────────────────┐
- │        Honey Drone Stack (Docker × 3)               │
- │  ┌──────────┐ ┌────────────┐ ┌──────────────────┐  │
- │  │ FCU Stub │ │  CC Stub   │ │  OpenClawAgent   │  │
- │  │ TCP:5760 │ │ UDP:14550  │─│  (host process)  │  │
- │  │          │ │ HTTP:80    │ │  5 async tasks    │  │
- │  │          │ │ WS:18789   │ │  phase detection  │  │
- │  │          │ │ Ghost:19k+ │ │  fingerprinting   │  │
- │  └──────────┘ └────────────┘ └──────────────────┘  │
- │       │              │               │              │
- │  ┌────┴──────────────┴───────────────┴──────────┐  │
- │  │  Track A: MTD Controller (Docker SDK)         │  │
- │  │  Track B: CTI Pipeline (STIX 2.1 → Dataset)  │  │
- │  └──────────────────────────────────────────────┘  │
- └─────────────────────────────────────────────────────┘
-```
+### Component Interaction Diagram
+
+![Component Flow](docs/diagrams/mirage_component_flow.png)
+
+### L2 Attacker Session Sequence
+
+![Sequence Diagram](docs/diagrams/mirage_sequence.png)
 
 **Host-Proxy Pattern**: Attacker packets arrive at Docker cc_stub → forwarded via UDP to real AgenticDecoyEngine on host → OpenClawAgent generates phase-adaptive response → sent back through cc_stub to attacker.
+
+> PlantUML source files: [`docs/diagrams/mirage_component_flow.puml`](docs/diagrams/mirage_component_flow.puml), [`docs/diagrams/mirage_sequence.puml`](docs/diagrams/mirage_sequence.puml)
+> Render with: `python3 docs/diagrams/render_diagrams.py` or `java -jar plantuml.jar docs/diagrams/*.puml`
 
 ---
 

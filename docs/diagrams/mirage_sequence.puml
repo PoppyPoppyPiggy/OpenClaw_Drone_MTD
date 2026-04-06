@@ -1,0 +1,178 @@
+@startuml MIRAGE-UAS L2 Attacker Session Sequence
+!theme plain
+skinparam backgroundColor #0d1117
+skinparam defaultFontColor #c9d1d9
+skinparam sequenceArrowColor #8b949e
+skinparam sequenceLifeLineBorderColor #30363d
+skinparam sequenceParticipantBackgroundColor #161b22
+skinparam sequenceParticipantBorderColor #30363d
+skinparam noteBorderColor #30363d
+skinparam noteBackgroundColor #1c2333
+
+title L2 Attacker Session — Full Lifecycle
+caption First HTTP packet → Phase Detection → MTD Trigger → STIX Bundle
+
+actor "L2 Attacker\n(HTTP Enum)" as ATK #ff5252
+participant "CC Stub\n(:80)" as CC #d29922
+participant "OpenClawAgent\n(host:14551)" as OCA #d29922
+participant "EngagementTracker" as ET #d29922
+participant "MavlinkResponseGen" as MRG #d29922
+participant "DeceptionState\nManager" as DSM #d29922
+participant "BreadcrumbPlanter" as BP #d29922
+participant "EngagementToMTD" as E2M #58a6ff
+participant "MTDExecutor" as MTDE #58a6ff
+participant "MavlinkInterceptor\n(:19551)" as MI #3fb950
+participant "AttackEventParser" as AEP #3fb950
+participant "ATTCKMapper" as AM #3fb950
+participant "STIXConverter" as SC #3fb950
+participant "MetricsCollector" as MC #bc8cff
+
+== Phase 1: First HTTP Request (RECON detected) ==
+
+ATK -> CC : HTTP GET /api/v1/params
+activate CC #553300
+CC -> CC : _metrics["http_requests"] += 1
+CC -> CC : _metrics["breadcrumbs_planted"] += 1
+
+note right of CC
+  Response includes breadcrumbs:
+  ssh_password: "companion_root_2026"
+  signing_key: md5(drone_id)
+  api_token: "sk-drone-..."
+end note
+
+CC --> ATK : 200 OK {params + breadcrumbs}
+CC -> MI : UDP copy to :19551
+deactivate CC
+
+MI -> AEP : MavlinkCaptureEvent\n(protocol=HTTP, path=/api/v1/params)
+activate AEP #226622
+AEP -> AM : map_event(HTTP, "GET:/api")
+AM --> AEP : ttp_ids=["T0842","T0888"]\nphase=RECONNAISSANCE\nconf=0.75
+AEP -> AEP : _compute_level()\n→ L1_BASIC (event_count=1)
+AEP --> SC : ParsedAttackEvent\n(level=L1, ttps=2)
+deactivate AEP
+
+SC -> SC : _build_attack_patterns()\n_build_indicator()\n_build_observed_data()\n_build_note()
+SC --> MC : stix2.Bundle\n(7 objects)
+
+== Phase 2: HTTP Login Attempt (EXPLOIT detected) ==
+
+ATK -> CC : POST /login {admin:admin}
+activate CC #553300
+CC --> ATK : 200 {authenticated:true, token:"sk-drone-..."}
+
+note right of CC
+  Attacker receives fake token
+  → will use in L4 breadcrumb chain
+end note
+
+CC -> MI : UDP copy
+deactivate CC
+
+MI -> AEP : MavlinkCaptureEvent\n(method=POST, path=/login)
+activate AEP #226622
+AEP -> AM : map_event(HTTP, "POST:/api")
+AM --> AEP : ttp_ids=["T0836"]\nphase=EXPLOITATION\nconf=0.85
+AEP -> AEP : _compute_level()\n→ L2_INTERMEDIATE
+AEP --> SC : ParsedAttackEvent\n(level=L2, ttps=1)
+deactivate AEP
+
+== Phase 3: Engine processes forwarded MAVLink ==
+
+ATK -> CC : MAVLink UDP HEARTBEAT
+activate CC #553300
+CC -> OCA : forward to ENGINE_HOST:14551
+activate OCA #664400
+
+OCA -> OCA : observe(event)\n_update_fingerprint()\n_detect_attack_phase()
+
+note right of OCA
+  Phase detection:
+  cmd_types = {HEARTBEAT}
+  → RECON (no exploit cmds)
+end note
+
+OCA -> ET : update_session(event)
+activate ET #664400
+ET -> ET : dwell_time_sec=0.1\ncommands_issued=1\nexploit_attempts=0
+ET --> OCA : EngagementMetrics
+deactivate ET
+
+OCA -> OCA : generate_response(event)\n→ _response_recon()\n→ _build_heartbeat()
+
+OCA --> CC : MAVLink HEARTBEAT response\n(sysid=2, QUADROTOR, STANDBY)
+deactivate OCA
+CC --> ATK : HEARTBEAT (17 bytes)
+deactivate CC
+
+== Phase 4: ARM Command → EXPLOIT phase ==
+
+ATK -> CC : MAVLink COMMAND_LONG (cmd=400 ARM)
+activate CC #553300
+CC -> OCA : forward to engine
+activate OCA #664400
+
+OCA -> OCA : observe(event)\n_detect_attack_phase()
+
+note right of OCA
+  cmd_types now includes COMMAND_LONG
+  → Phase: RECON → EXPLOIT
+  Tool: UNKNOWN (< 3 cmds)
+end note
+
+OCA -> ET : update_session(event)
+ET --> OCA : EngagementMetrics\n(cmds=2, dwell=0.3s)
+
+OCA -> OCA : generate_response()\n→ _response_recon()\n→ _build_heartbeat()\n(still RECON: COMMAND_LONG\ngets HEARTBEAT to stay engaged)
+
+OCA -> DSM : observe_protocol_interact()
+DSM -> DSM : Bayesian update\nLR=1.1 (exploit attempt)\nP(real): 0.70 → 0.72
+
+OCA --> CC : HEARTBEAT response
+deactivate OCA
+CC --> ATK : HEARTBEAT (17 bytes)
+deactivate CC
+
+== Phase 5: Urgency threshold → MTD Trigger ==
+
+OCA -> ET : compute_urgency(metrics)
+activate ET #664400
+ET -> ET : level=L2 → base_urgency=0.5
+ET --> OCA : urgency=0.5
+deactivate ET
+
+note right of OCA
+  urgency(0.5) >= threshold(0.3)
+  → Create MTDTrigger
+end note
+
+OCA -> E2M : MTDTrigger\n(drone=honey_01, level=L2\nurgency=0.5\nactions=[port_rotate, ip_shuffle])
+activate E2M #224466
+E2M -> E2M : convert()\ncost_budget = 0.5 × 0.5 = 0.25\nselect actions within budget
+E2M -> MTDE : [MTDAction(PORT_ROTATE)]
+activate MTDE #224466
+MTDE -> MTDE : docker exec cc_honey_01\niptables -t nat -A PREROUTING\n+ kill -HUP mavlink-router
+MTDE --> MC : MTDResult\n(PORT_ROTATE, 120ms, success=true)
+deactivate MTDE
+deactivate E2M
+
+== Phase 6: STIX Bundle Created ==
+
+SC -> SC : stix2.Bundle(\nIdentity × 2\nAttackPattern × 2\nIndicator\nObservedData\nNote\n)
+
+note right of SC
+  Indicator pattern:
+  [ipv4-addr:value = '172.40.0.200']
+  AND [network-traffic:dst_port = 14550
+  AND network-traffic:protocols[0] = 'mavlink']
+end note
+
+SC --> MC : Bundle saved\nbundle--a1b2c3d4...
+
+== Phase 7: Metrics Collection ==
+
+MC -> MC : Table II: L2 engagement\nTable III: PORT_ROTATE 120ms\nTable V: 0 breaches
+MC -> MC : DeceptionScore\n= 0.30×0.75 + 0.25×1.0\n+ 0.20×0.72 + 0.15×1.0\n+ 0.10×0.03\n= 0.714
+
+@enduml

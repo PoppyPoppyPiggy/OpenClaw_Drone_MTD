@@ -1,0 +1,138 @@
+@startuml MIRAGE-UAS Component Flow
+!theme plain
+skinparam backgroundColor #0d1117
+skinparam defaultFontColor #c9d1d9
+skinparam defaultFontSize 11
+skinparam ArrowColor #8b949e
+skinparam componentBorderColor #30363d
+
+title MIRAGE-UAS Framework — Component Interaction Diagram
+caption DS Lab, Kyonggi University | ACM CCS 2026
+
+' ═══ LAYER 1: ATTACKER (RED) ═══
+package "Attacker (L0-L4)" <<Rectangle>> #331111 {
+    component [L0 Script Kiddie\n(random UDP scan)] as L0 #552222
+    component [L1 Basic MAVLink\n(HEARTBEAT/ARM)] as L1 #552222
+    component [L2 HTTP Enum\n(/api/v1/*)] as L2 #552222
+    component [L3 WebSocket CVE\n(Origin: null)] as L3 #552222
+    component [L4 APT Chain\n(breadcrumb follow)] as L4 #552222
+}
+
+' ═══ LAYER 2: AGENTIC HONEY DRONE (ORANGE) ═══
+package "Agentic Honey Drone Stack (×3)" <<Rectangle>> #332200 {
+    component [CC Stub\nUDP:14550 HTTP:80\nWS:18789 RTSP:8554] as CC #553300
+    component [FCU Stub\nTCP:5760] as FCU #553300
+
+    package "AgenticDecoyEngine (Host)" <<Rectangle>> #443300 {
+        component [OpenClawAgent\n5 async tasks\nphase detection\nfingerprinting] as OCA #664400
+        component [MavlinkResponseGen\nArduPilot v4.3.x\nanti-fingerprint] as MRG #664400
+        component [EngagementTracker\nper-session metrics\nL0-L4 classification] as ET #664400
+    }
+
+    package "Deception Layer" <<Rectangle>> #443300 {
+        component [FakeServiceFactory\nGhost HTTP/RTSP/SSH\nMAVLink/OpenClaw] as FSF #664400
+        component [BreadcrumbPlanter\nfake creds/tokens\nSSH keys/DSNs] as BP #664400
+        component [DeceptionStateManager\nBayesian P(real|obs)\nlikelihood ratios] as DSM #664400
+        component [DeceptionOrchestrator\ncoordinates all\nurgency modifier] as DO #664400
+    }
+}
+
+' ═══ LAYER 3: MTD (BLUE) ═══
+package "MTD Controller" <<Rectangle>> #112244 {
+    component [EngagementToMTD\nL0-L4 → actions\ncost budget] as E2M #224466
+    component [MTDExecutor\nDocker SDK\nDRY_RUN mode] as MTDE #224466
+    component [DecoyRotationPolicy\nfull drone replacement\ncooldown 60s] as DRP #224466
+    component [MTDMonitor\nCPU/MEM polling\nauto-recovery] as MTDM #224466
+
+    component [PORT_ROTATE\niptables DNAT\n120ms] as PR #335577
+    component [IP_SHUFFLE\nnetwork reconnect\n450ms] as IS #335577
+    component [KEY_ROTATE\nurandom + restart\n180ms] as KR #335577
+    component [SERVICE_MIGRATE\ncontainer replace\n3200ms] as SM #335577
+}
+
+' ═══ LAYER 4: CTI PIPELINE (GREEN) ═══
+package "CTI Pipeline (Track B)" <<Rectangle>> #113311 {
+    component [MavlinkInterceptor\nUDP :19551-53\npassive tap] as MI #226622
+    component [AttackEventParser\nL0-L4 classification\nsession accumulator] as AEP #226622
+    component [ATTCKMapper\n12 ICS TTPs\n4 protocols] as AM #226622
+    component [STIXConverter\nSTIX 2.1 bundles\n7 object types] as SC #226622
+    component [CTI Ingest API\nFastAPI :8765\n/ingest/event] as CIA #226622
+}
+
+package "Dataset Builder" <<Rectangle>> #113311 {
+    component [PositiveCollector\nlabel=1\nhoneydrone source] as PC #226622
+    component [NegativeGenerator\nlabel=0\nSITL/synthetic] as NG #226622
+    component [DatasetPackager\nCSV + YAML\nSTIX bundles] as DP #226622
+    component [DatasetValidator\nV1-V6 checks] as DV #226622
+}
+
+' ═══ LAYER 5: EVALUATION (PURPLE) ═══
+package "Evaluation" <<Rectangle>> #221133 {
+    component [MetricsCollector\nTable II-VI\nJSON output] as MC #442266
+    component [DeceptionScorer\nDS = Σ(wi·ci)\n5 components] as DSC #442266
+    component [PlotResults\nIEEE figures\nPDF 300 DPI] as PLT #442266
+    component [StatisticalTest\nWilcoxon + Cohen's d\nLaTeX tables] as ST #442266
+    component [Dashboard\nFastAPI :8888\n17 live charts] as DASH #442266
+}
+
+' ═══ DATA FLOW ARROWS ═══
+
+' Attacker → Honey Drone
+L0 -[#ff5252]-> CC : "random UDP\n14550-14600"
+L1 -[#ff5252]-> CC : "MAVLink UDP\n:14550"
+L2 -[#ff5252]-> CC : "HTTP GET/POST\n:80"
+L3 -[#ff5252]-> CC : "WebSocket\n:18789"
+L4 -[#ff5252]-> CC : "multi-protocol\n:80,:19000+"
+
+' CC ↔ Engine (host-proxy)
+CC -[#ffab00]-> OCA : "forward UDP\nENGINE_HOST:14551"
+OCA -[#ffab00]-> CC : "MAVLink response\nphase-adaptive"
+CC ..[#ffab00]..> MI : "MAVLink copy\nUDP :19551"
+
+' Inside Engine
+OCA -[#ffab00]-> ET : "observe(event)"
+ET -[#ffab00]-> OCA : "EngagementMetrics"
+OCA -[#ffab00]-> MRG : "fallback if\nagent returns None"
+
+' Deception Layer
+DO -[#ffab00]-> FSF : "spawn ghost\nservice"
+DO -[#ffab00]-> BP : "plant\nbreadcrumb"
+DO -[#ffab00]-> DSM : "observe_*()\nbelief update"
+DSM -[#ffab00]-> DO : "urgency\nmodifier"
+
+' Engine → MTD
+ET -[#58a6ff]-> E2M : "MTDTrigger\nurgency ≥ 0.3"
+E2M -[#58a6ff]-> MTDE : "list[MTDAction]\ncost ≤ budget"
+MTDE -[#58a6ff]-> PR : "iptables\nDNAT"
+MTDE -[#58a6ff]-> IS : "docker network\ndisconnect"
+MTDE -[#58a6ff]-> KR : "dd urandom\nrestart"
+MTDE -[#58a6ff]-> SM : "container\nreplace"
+DRP -[#58a6ff]-> SM : "rotation\ndecision"
+MTDM -[#58a6ff]-> E2M : "CPU > 80%\nauto-trigger"
+
+' CTI Pipeline
+MI -[#3fb950]-> AEP : "MavlinkCapture\nEvent"
+AEP -[#3fb950]-> AM : "map_event()\nprotocol+msg"
+AM -[#3fb950]-> AEP : "ttp_ids[]\nkill_chain"
+AEP -[#3fb950]-> SC : "ParsedAttack\nEvent"
+SC -[#3fb950]-> CIA : "stix2.Bundle\n7 objects"
+
+' Dataset
+CIA -[#3fb950]-> PC : "label=1\nattack sample"
+NG -[#3fb950]-> DP : "label=0\nbenign sample"
+PC -[#3fb950]-> DP : "label=1\nattack sample"
+DP -[#3fb950]-> DV : "dataset.csv\n1007 rows"
+
+' Evaluation
+ET -[#bc8cff]-> MC : "EngagementMetrics\nTable II"
+MTDE -[#bc8cff]-> MC : "MTDResult\nTable III"
+DV -[#bc8cff]-> MC : "ValidationReport\nTable IV"
+DSM -[#bc8cff]-> MC : "DeceptionEff\nTable V"
+OCA -[#bc8cff]-> MC : "AgentDecision\nTable VI"
+MC -[#bc8cff]-> DSC : "all metrics\n→ DS formula"
+MC -[#bc8cff]-> PLT : "JSON → PDF\n6 figures"
+MC -[#bc8cff]-> ST : "JSON → LaTeX\n5 tables"
+MC -[#bc8cff]-> DASH : "/api/v1/*\n17 charts"
+DSC -[#bc8cff]-> DASH : "DS = 0.714"
+
+@enduml
