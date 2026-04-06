@@ -214,7 +214,8 @@ async def run_l2(duration_sec: int) -> float:
     async with aiohttp.ClientSession() as session:
         while time.time() - start < duration_sec:
             for ip, mavport in _TARGETS:
-                http_port = _HTTP_PORT_BASE + 1 + _TARGETS.index((ip, mavport))
+                # Inside Docker network, all CCs listen on port 80
+                http_port = 80
                 base_url = f"http://{ip}:{http_port}"
                 for path in paths:
                     url = f"{base_url}{path}"
@@ -266,7 +267,8 @@ async def run_l3(duration_sec: int) -> float:
 
     while time.time() - start < duration_sec:
         for idx, (ip, _) in enumerate(_TARGETS):
-            ws_port = _WS_PORT_BASE + 1 + idx
+            # Inside Docker network, all CCs serve WebSocket on 18789
+            ws_port = 18789
             ws_url = f"ws://{ip}:{ws_port}"
             t0 = time.time()
             try:
@@ -361,10 +363,10 @@ async def run_l4(duration_sec: int) -> float:
                 except Exception as e:
                     _log_interaction(4, "ssh_connect_fail", f"{ip}:2222", str(e)[:100], 0)
 
-                # breadcrumb lure 추적 (HTTP)
+                # breadcrumb lure 추적 (HTTP — port 80 inside Docker network)
                 for bc in breadcrumbs[:5]:
-                    for port_offset in range(1, 4):
-                        url = f"http://{ip}:{_HTTP_PORT_BASE + port_offset}/lure"
+                    for lure_path in ["/lure", "/config", "/upload"]:
+                        url = f"http://{ip}:80{lure_path}"
                         t0 = time.time()
                         try:
                             async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:

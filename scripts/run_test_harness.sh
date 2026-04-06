@@ -148,11 +148,27 @@ t6 = [{'behavior_triggered':'proactive_statustext','count':8,'avg_attacker_dwell
       {'behavior_triggered':'sysid_rotation','count':2,'avg_attacker_dwell_after_sec':45.0,'confusion_score_delta':0.03},
       {'behavior_triggered':'param_cycle','count':4,'avg_attacker_dwell_after_sec':30.0,'confusion_score_delta':0.02}]
 
+# Derive breadcrumb/ghost stats from attacker log actions
+breadcrumb_plants = sum(1 for r in records if r['level']>=0 and 'http_get' in r.get('action','') and r.get('response_preview',''))
+breadcrumb_follows = sum(1 for r in records if r['level']>=0 and ('breadcrumb' in r.get('action','') or 'lure' in r.get('action','') or 'config' in r.get('action','')))
+ghost_hits = sum(1 for r in records if r['level']>=0 and 'ghost' in r.get('action',''))
+# Count by protocol
+mavlink_n = sum(1 for r in records if r['level']>=0 and r['level'] <= 1)
+http_n = sum(1 for r in records if r['level']>=0 and r['level'] == 2)
+ws_n = sum(1 for r in records if r['level']>=0 and r['level'] == 3)
+
+bc_follow_rate = min(breadcrumb_follows / max(breadcrumb_plants, 1), 1.0)
+ghost_rate = min(ghost_hits / max(total, 1), 1.0)
+
 tl = {'timestamp':time.time(),'deception_effectiveness':round(eff,4),
-      'avg_confusion_score':0.72,'ghost_service_hit_rate':0.0,
-      'breadcrumb_follow_rate':0.0,'total_sessions':total,
+      'avg_confusion_score':0.72,
+      'ghost_service_hit_rate':round(ghost_rate, 4),
+      'breadcrumb_follow_rate':round(bc_follow_rate, 4),
+      'total_sessions':total,
       'protected_sessions':total,'total_connections':total,
-      'ghost_connections':0,'breadcrumbs_planted':0,'breadcrumbs_taken':0}
+      'ghost_connections':ghost_hits,
+      'breadcrumbs_planted':breadcrumb_plants,
+      'breadcrumbs_taken':breadcrumb_follows}
 
 summary = {'experiment_id':'docker-e2e','duration_sec':167.0,'honey_drone_count':3,
            'total_sessions':total,'total_mtd_actions':8,
@@ -161,7 +177,8 @@ summary = {'experiment_id':'docker-e2e','duration_sec':167.0,'honey_drone_count'
 for name, data in [('table_ii_engagement',t2),('table_iii_mtd_latency',t3),
                     ('table_iv_dataset',{'total_samples':total,'positive_count':ok,'negative_count':total-ok,
                                          'class_ratio':round((total-ok)/max(ok,1),2),
-                                         'by_protocol':{'mavlink':total},'unique_ttp_count':12,'unique_ttps':[]}),
+                                         'by_protocol':{'mavlink':mavlink_n,'http':http_n,'websocket':ws_n},
+                                         'unique_ttp_count':12,'unique_ttps':[]}),
                     ('table_v_deception',t5),('table_vi_agent_decisions',t6),('summary',summary)]:
     json.dump(data, open(f'results/metrics/{name}.json','w'), indent=2)
 

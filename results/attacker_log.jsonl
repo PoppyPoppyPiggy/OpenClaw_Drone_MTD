@@ -1,173 +1,183 @@
-{"timestamp": 1775431848.915539, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14580", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431850.0171995, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14582", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431851.1188076, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14553", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431852.2203085, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14569", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431853.3217666, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14583", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431854.4232607, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14550", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431854.5237052, "level": 0, "action": "udp_scan", "target": "172.40.0.10:14592", "response_preview": "000000000203010303", "duration_ms": 0.06}
-{"timestamp": 1775431854.624114, "level": 0, "action": "udp_scan", "target": "172.40.0.11:14566", "response_preview": "bb8200", "duration_ms": 0.07}
-{"timestamp": 1775431855.7255628, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14595", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431856.8270066, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14551", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431857.928462, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14588", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431859.0298772, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14554", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431860.1313617, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14572", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431861.2328098, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14583", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431862.3336005, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14567", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431863.4350483, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14584", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431864.5365562, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14569", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431865.638048, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14565", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431866.7395275, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14575", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431867.8410065, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14573", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431868.9424794, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14566", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431870.0439515, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14598", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431871.145384, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14566", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431872.246862, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14597", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431873.3483272, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14555", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431874.4497848, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14592", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431875.5512903, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14551", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431876.6527498, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14580", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431877.7541845, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14600", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431878.8556435, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14562", "response_preview": "", "duration_ms": 1000.0}
-{"timestamp": 1775431880.9581583, "level": 1, "action": "heartbeat_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
-{"timestamp": 1775431883.1606865, "level": 1, "action": "param_request_list_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
-{"timestamp": 1775431885.3632162, "level": 1, "action": "arm_command_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
-{"timestamp": 1775431886.5780225, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 1014.33}
-{"timestamp": 1775431886.7785285, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.07}
-{"timestamp": 1775431886.9790175, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
-{"timestamp": 1775431887.1795533, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.09}
-{"timestamp": 1775431887.8057823, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 425.8}
-{"timestamp": 1775431888.006256, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431888.2067466, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.07}
-{"timestamp": 1775431888.4072132, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.04}
-{"timestamp": 1775431888.8136878, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 206.03}
-{"timestamp": 1775431889.0141716, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431889.2146764, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
-{"timestamp": 1775431889.415158, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431889.8281467, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 212.57}
-{"timestamp": 1775431890.0286763, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "900100", "duration_ms": 0.05}
-{"timestamp": 1775431890.835296, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 606.16}
-{"timestamp": 1775431891.03582, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.03}
-{"timestamp": 1775431891.2362738, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.03}
-{"timestamp": 1775431891.436755, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.06}
-{"timestamp": 1775431891.8430727, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 205.9}
-{"timestamp": 1775431892.043614, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.07}
-{"timestamp": 1775431892.2440727, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.04}
-{"timestamp": 1775431892.444566, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431892.861851, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 216.85}
-{"timestamp": 1775431893.0623431, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "900100", "duration_ms": 0.06}
-{"timestamp": 1775431893.883044, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 620.26}
-{"timestamp": 1775431894.0835476, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.03}
-{"timestamp": 1775431894.2839773, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.03}
-{"timestamp": 1775431894.4844608, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431894.8949, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 210.0}
-{"timestamp": 1775431895.0954154, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431895.2958875, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
-{"timestamp": 1775431895.4963975, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.06}
-{"timestamp": 1775431895.902559, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 205.74}
-{"timestamp": 1775431896.1030743, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "900100", "duration_ms": 0.06}
-{"timestamp": 1775431896.915707, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 612.22}
-{"timestamp": 1775431897.1161852, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.03}
-{"timestamp": 1775431897.3166726, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
-{"timestamp": 1775431897.5171292, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431897.9358313, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 218.29}
-{"timestamp": 1775431898.1363585, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431898.336821, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.04}
-{"timestamp": 1775431898.537304, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431898.9474418, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 209.72}
-{"timestamp": 1775431899.1479387, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "900100", "duration_ms": 0.03}
-{"timestamp": 1775431899.9549246, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 606.54}
-{"timestamp": 1775431900.1554363, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.07}
-{"timestamp": 1775431900.355926, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
-{"timestamp": 1775431900.5564048, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431900.9626353, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 205.78}
-{"timestamp": 1775431901.1631358, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431901.3636694, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
-{"timestamp": 1775431901.5641284, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.03}
-{"timestamp": 1775431901.9849064, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 220.38}
-{"timestamp": 1775431902.1853888, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "900100", "duration_ms": 0.03}
-{"timestamp": 1775431902.994043, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 608.2}
-{"timestamp": 1775431903.1945355, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431903.3950095, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
-{"timestamp": 1775431903.595476, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431904.0010335, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 205.15}
-{"timestamp": 1775431904.2014966, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431904.401988, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.07}
-{"timestamp": 1775431904.6024606, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.03}
-{"timestamp": 1775431905.0105183, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 207.66}
-{"timestamp": 1775431905.21101, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "900100", "duration_ms": 0.05}
-{"timestamp": 1775431906.018451, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 607.0}
-{"timestamp": 1775431906.2189386, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
-{"timestamp": 1775431906.419457, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
-{"timestamp": 1775431906.619954, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.06}
-{"timestamp": 1775431907.025347, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 204.97}
-{"timestamp": 1775431907.2258093, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.03}
-{"timestamp": 1775431907.426264, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.03}
-{"timestamp": 1775431907.6268358, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.09}
-{"timestamp": 1775431908.0328276, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 205.53}
-{"timestamp": 1775431908.233308, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "900100", "duration_ms": 0.04}
-{"timestamp": 1775431909.0876718, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 653.92}
-{"timestamp": 1775431909.2882314, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.06}
-{"timestamp": 1775431909.4887366, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
-{"timestamp": 1775431909.689209, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
-{"timestamp": 1775431910.743895, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.10:80/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
-{"timestamp": 1775431913.7474756, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.10:80/api/v1/status", "response_preview": "", "duration_ms": 0}
-{"timestamp": 1775431913.863774, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.10:80/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
-{"timestamp": 1775431916.8673544, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.10:80/health", "response_preview": "", "duration_ms": 0}
-{"timestamp": 1775431920.604889, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.11:81/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431920.605309, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.11:81/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431920.605571, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.11:81/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431920.6060643, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.11:81/health", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431921.1078258, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.12:82/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431921.1081407, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.12:82/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431921.1083975, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.12:82/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431921.1086304, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.12:82/health", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431924.6133478, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.10:80/api/v1/params", "response_preview": "", "duration_ms": 0}
-{"timestamp": 1775431924.7437515, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.10:80/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
-{"timestamp": 1775431927.7472284, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.10:80/api/v1/mission", "response_preview": "", "duration_ms": 0}
-{"timestamp": 1775431927.863807, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.10:80/health", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
-{"timestamp": 1775431934.4881818, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.11:81/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431934.4885085, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.11:81/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431934.4887378, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.11:81/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431934.4889333, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.11:81/health", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431934.99044, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.12:82/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431934.9907293, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.12:82/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431934.9909487, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.12:82/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431934.991149, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.12:82/health", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431938.493751, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.10:80/api/v1/params", "response_preview": "", "duration_ms": 0}
-{"timestamp": 1775431938.5937839, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.10:80/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
-{"timestamp": 1775431941.5972607, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.10:80/api/v1/mission", "response_preview": "", "duration_ms": 0}
-{"timestamp": 1775431941.7037578, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.10:80/health", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
-{"timestamp": 1775431948.3281705, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.11:81/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431948.3285344, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.11:81/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431948.328799, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.11:81/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431948.3290033, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.11:81/health", "response_preview": "Cannot connect to host 172.40.0.11:81 ssl:default [Connect call failed ('172.40.0.11', 81)]", "duration_ms": 0}
-{"timestamp": 1775431948.8306227, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.12:82/api/v1/params", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431948.83089, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.12:82/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431948.8310883, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.12:82/api/v1/mission", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431948.831428, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.12:82/health", "response_preview": "Cannot connect to host 172.40.0.12:82 ssl:default [Connect call failed ('172.40.0.12', 82)]", "duration_ms": 0}
-{"timestamp": 1775431952.358632, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18790", "response_preview": "timed out during opening handshake", "duration_ms": 0}
-{"timestamp": 1775431953.3602743, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18791)", "duration_ms": 0}
-{"timestamp": 1775431954.3612266, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18792", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18792)", "duration_ms": 0}
-{"timestamp": 1775431958.3659294, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18790", "response_preview": "timed out during opening handshake", "duration_ms": 0}
-{"timestamp": 1775431959.367583, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18791)", "duration_ms": 0}
-{"timestamp": 1775431960.3691673, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18792", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18792)", "duration_ms": 0}
-{"timestamp": 1775431964.3737483, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18790", "response_preview": "timed out during opening handshake", "duration_ms": 0}
-{"timestamp": 1775431965.3754454, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18791)", "duration_ms": 0}
-{"timestamp": 1775431966.377036, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18792", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18792)", "duration_ms": 0}
-{"timestamp": 1775431970.381693, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18790", "response_preview": "timed out during opening handshake", "duration_ms": 0}
-{"timestamp": 1775431971.3832543, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18791)", "duration_ms": 0}
-{"timestamp": 1775431972.3848464, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18792", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18792)", "duration_ms": 0}
-{"timestamp": 1775431976.3895319, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18790", "response_preview": "timed out during opening handshake", "duration_ms": 0}
-{"timestamp": 1775431977.3911407, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.11:18791", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 18791)", "duration_ms": 0}
-{"timestamp": 1775431978.3927705, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.12:18792", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 18792)", "duration_ms": 0}
-{"timestamp": 1775431979.394496, "level": 4, "action": "breadcrumb_harvest", "target": "log", "response_preview": "found 0 breadcrumbs", "duration_ms": 0}
-{"timestamp": 1775431982.3980896, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.10:2222", "response_preview": "", "duration_ms": 0}
-{"timestamp": 1775431989.745372, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.11:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 2222)", "duration_ms": 0}
-{"timestamp": 1775431989.7471006, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.12:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 2222)", "duration_ms": 0}
-{"timestamp": 1775431991.8637867, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.10:2222", "response_preview": "[Errno 113] Connect call failed ('172.40.0.10', 2222)", "duration_ms": 0}
-{"timestamp": 1775432000.1066766, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.11:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 2222)", "duration_ms": 0}
-{"timestamp": 1775432000.1081913, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.12:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 2222)", "duration_ms": 0}
-{"timestamp": 1775432001.2337363, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.10:2222", "response_preview": "[Errno 113] Connect call failed ('172.40.0.10', 2222)", "duration_ms": 0}
-{"timestamp": 1775432009.466707, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.11:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 2222)", "duration_ms": 0}
-{"timestamp": 1775432009.4681933, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.12:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 2222)", "duration_ms": 0}
-{"timestamp": 1775432010.4706514, "level": -1, "action": "final_score", "target": "summary", "response_preview": "{\"total_time_sec\": 162.56, \"decoy_time_sec\": 8.69, \"deception_score_pct\": 5.35}", "duration_ms": 0}
+{"timestamp": 1775436206.5992882, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14594", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436207.700945, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14563", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436208.8025749, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14566", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436209.9031327, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14573", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436211.0046794, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14569", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436212.106165, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14566", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436213.20767, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14575", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436214.3091714, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14591", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436215.4106333, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14561", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436216.5121188, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14576", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436217.6135874, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14591", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436218.7150638, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14551", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436219.816533, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14567", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436220.9180787, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14589", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436222.019539, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14561", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436223.1210191, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14578", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436224.2225435, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14592", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436225.324009, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14556", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436226.4254625, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14578", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436227.526938, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14574", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436228.6284204, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14551", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436229.7299085, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14566", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436230.831395, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14590", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436231.9329069, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14568", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436233.034383, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14577", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436234.135882, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14575", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436235.2373996, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14563", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436236.3387911, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.10:14570", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436237.440232, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.11:14579", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436238.5417135, "level": 0, "action": "udp_scan_timeout", "target": "172.40.0.12:14595", "response_preview": "", "duration_ms": 1000.0}
+{"timestamp": 1775436240.6436155, "level": 1, "action": "heartbeat_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775436242.8461199, "level": 1, "action": "param_request_list_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775436245.0468252, "level": 1, "action": "arm_command_timeout", "target": "172.40.0.10:14550", "response_preview": "", "duration_ms": 2000.0}
+{"timestamp": 1775436246.26833, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 1021.07}
+{"timestamp": 1775436246.4688559, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.07}
+{"timestamp": 1775436246.669343, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
+{"timestamp": 1775436246.8698978, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.09}
+{"timestamp": 1775436247.4834259, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 413.07}
+{"timestamp": 1775436247.683954, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
+{"timestamp": 1775436247.8844686, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.07}
+{"timestamp": 1775436248.084936, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.04}
+{"timestamp": 1775436248.493897, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 208.45}
+{"timestamp": 1775436248.6943898, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
+{"timestamp": 1775436248.8948717, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
+{"timestamp": 1775436249.095334, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
+{"timestamp": 1775436249.5133264, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 217.56}
+{"timestamp": 1775436249.7138586, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "900100", "duration_ms": 0.05}
+{"timestamp": 1775436250.5647511, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 650.46}
+{"timestamp": 1775436250.7652235, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.02}
+{"timestamp": 1775436250.965662, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.04}
+{"timestamp": 1775436251.1661777, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.07}
+{"timestamp": 1775436251.5851095, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 218.5}
+{"timestamp": 1775436251.7856052, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
+{"timestamp": 1775436251.9861038, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
+{"timestamp": 1775436252.186596, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
+{"timestamp": 1775436252.6065788, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 219.57}
+{"timestamp": 1775436252.8070807, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "900100", "duration_ms": 0.06}
+{"timestamp": 1775436253.6189346, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 611.41}
+{"timestamp": 1775436253.8194113, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.04}
+{"timestamp": 1775436254.0198777, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.03}
+{"timestamp": 1775436254.2203717, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.06}
+{"timestamp": 1775436254.6267, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 205.87}
+{"timestamp": 1775436254.827227, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
+{"timestamp": 1775436255.0277252, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.07}
+{"timestamp": 1775436255.2282522, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
+{"timestamp": 1775436255.6343699, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 205.67}
+{"timestamp": 1775436255.834854, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "900100", "duration_ms": 0.06}
+{"timestamp": 1775436256.642324, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 607.04}
+{"timestamp": 1775436256.842812, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.03}
+{"timestamp": 1775436257.0432892, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
+{"timestamp": 1775436257.243735, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
+{"timestamp": 1775436257.6654344, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 221.21}
+{"timestamp": 1775436257.8659325, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
+{"timestamp": 1775436258.0664074, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
+{"timestamp": 1775436258.2668955, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.06}
+{"timestamp": 1775436258.673041, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 205.71}
+{"timestamp": 1775436258.8735123, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "900100", "duration_ms": 0.03}
+{"timestamp": 1775436259.683593, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 609.62}
+{"timestamp": 1775436259.8840818, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
+{"timestamp": 1775436260.0845687, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
+{"timestamp": 1775436260.2850692, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
+{"timestamp": 1775436260.69139, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 205.88}
+{"timestamp": 1775436260.8918731, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.04}
+{"timestamp": 1775436261.0923264, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.05}
+{"timestamp": 1775436261.2927985, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.03}
+{"timestamp": 1775436261.6995046, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 206.27}
+{"timestamp": 1775436261.8999965, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "900100", "duration_ms": 0.03}
+{"timestamp": 1775436262.7080803, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 607.64}
+{"timestamp": 1775436262.9085941, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.06}
+{"timestamp": 1775436263.1090934, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
+{"timestamp": 1775436263.3095973, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.05}
+{"timestamp": 1775436263.717462, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 207.41}
+{"timestamp": 1775436263.9180224, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "065b4346475d206763735f6261636b75703d3137322e34302e302e31313a3134", "duration_ms": 0.06}
+{"timestamp": 1775436264.118529, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.07}
+{"timestamp": 1775436264.3190007, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.03}
+{"timestamp": 1775436264.5194743, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.03}
+{"timestamp": 1775436264.7236764, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 3.77}
+{"timestamp": 1775436264.9241586, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "900100", "duration_ms": 0.06}
+{"timestamp": 1775436265.732533, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 607.94}
+{"timestamp": 1775436265.933097, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.07}
+{"timestamp": 1775436266.1336696, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.11}
+{"timestamp": 1775436266.3341975, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.07}
+{"timestamp": 1775436266.7513318, "level": 1, "action": "heartbeat", "target": "172.40.0.10:14550", "response_preview": "000000000203010303", "duration_ms": 216.64}
+{"timestamp": 1775436266.9518104, "level": 1, "action": "param_request_list", "target": "172.40.0.10:14550", "response_preview": "065b4346475d206763735f6261636b75703d3137322e34302e302e31323a3134", "duration_ms": 0.03}
+{"timestamp": 1775436267.1522782, "level": 1, "action": "arm_command", "target": "172.40.0.10:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.04}
+{"timestamp": 1775436267.352787, "level": 1, "action": "heartbeat", "target": "172.40.0.11:14550", "response_preview": "0080bb4452544c5f414c540000000000000000000908000100", "duration_ms": 0.06}
+{"timestamp": 1775436267.5533097, "level": 1, "action": "param_request_list", "target": "172.40.0.11:14550", "response_preview": "0080a245424154545f43415041434954590000000908000200", "duration_ms": 0.06}
+{"timestamp": 1775436267.7613428, "level": 1, "action": "arm_command", "target": "172.40.0.11:14550", "response_preview": "000000000203010303", "duration_ms": 7.68}
+{"timestamp": 1775436267.9619486, "level": 1, "action": "heartbeat", "target": "172.40.0.12:14550", "response_preview": "900100", "duration_ms": 0.09}
+{"timestamp": 1775436268.7691345, "level": 1, "action": "param_request_list", "target": "172.40.0.12:14550", "response_preview": "000000000203010303", "duration_ms": 606.65}
+{"timestamp": 1775436268.9696524, "level": 1, "action": "arm_command", "target": "172.40.0.12:14550", "response_preview": "0000803f41524d494e475f434845434b000000000908000000", "duration_ms": 0.05}
+{"timestamp": 1775436272.2817328, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.10:80/api/v1/params", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775436272.4238482, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.10:80/api/v1/status", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
+{"timestamp": 1775436275.4274015, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.10:80/api/v1/mission", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775436275.5437963, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.10:80/health", "response_preview": "Cannot connect to host 172.40.0.10:80 ssl:default [Connect call failed ('172.40.0.10', 80)]", "duration_ms": 0}
+{"timestamp": 1775436285.1719818, "level": 2, "action": "http_get_/api/v1/params_fail", "target": "http://172.40.0.11:80/api/v1/params", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775436288.1737351, "level": 2, "action": "http_get_/api/v1/status_fail", "target": "http://172.40.0.11:80/api/v1/status", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775436291.1776404, "level": 2, "action": "http_get_/api/v1/mission_fail", "target": "http://172.40.0.11:80/api/v1/mission", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775436294.1814356, "level": 2, "action": "http_get_/health_fail", "target": "http://172.40.0.11:80/health", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775436298.126043, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "{\"authenticated\": true, \"token\": \"sk-drone-a6afa148d0e76ab7\"}", "duration_ms": 943.43}
+{"timestamp": 1775436298.1268544, "level": 2, "action": "http_login", "target": "http://172.40.0.11:80/login", "response_preview": "{\"authenticated\": true, \"token\": \"sk-drone-a6afa148d0e76ab7\"}", "duration_ms": 0.64}
+{"timestamp": 1775436300.1515274, "level": 2, "action": "http_get_/api/v1/params", "target": "http://172.40.0.12:80/api/v1/params", "response_preview": "{\"params\": [{\"name\": \"ARMING_CHECK\", \"value\": 1.0}, {\"name\": \"RTL_ALT\", \"value\": 1500.0}, {\"name\": \"", "duration_ms": 1523.96}
+{"timestamp": 1775436300.1522417, "level": 2, "action": "http_get_/api/v1/status", "target": "http://172.40.0.12:80/api/v1/status", "response_preview": "{\"drone_id\": \"honey_02\", \"armed\": false, \"mode\": \"STABILIZE\", \"battery\": 81, \"gps_fix\": 3, \"satellit", "duration_ms": 0.54}
+{"timestamp": 1775436300.152715, "level": 2, "action": "http_get_/api/v1/mission", "target": "http://172.40.0.12:80/api/v1/mission", "response_preview": "{\"mission\": [{\"seq\": 0, \"command\": 22, \"lat\": 37.5665, \"lon\": 126.978, \"alt\": 50.0}, {\"seq\": 1, \"com", "duration_ms": 0.39}
+{"timestamp": 1775436300.1531339, "level": 2, "action": "http_get_/health", "target": "http://172.40.0.12:80/health", "response_preview": "OK", "duration_ms": 0.34}
+{"timestamp": 1775436300.154194, "level": 2, "action": "http_login", "target": "http://172.40.0.12:80/login", "response_preview": "{\"authenticated\": true, \"token\": \"sk-drone-ab7b9f4564fd1c8b\"}", "duration_ms": 0.92}
+{"timestamp": 1775436300.1546366, "level": 2, "action": "http_login", "target": "http://172.40.0.12:80/login", "response_preview": "{\"authenticated\": true, \"token\": \"sk-drone-ab7b9f4564fd1c8b\"}", "duration_ms": 0.38}
+{"timestamp": 1775436300.1550202, "level": 2, "action": "http_login", "target": "http://172.40.0.12:80/login", "response_preview": "{\"authenticated\": true, \"token\": \"sk-drone-ab7b9f4564fd1c8b\"}", "duration_ms": 0.32}
+{"timestamp": 1775436303.672011, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18789", "response_preview": "timed out during opening handshake", "duration_ms": 0}
+{"timestamp": 1775436304.6745756, "level": 3, "action": "ws_auth_bypass", "target": "ws://172.40.0.11:18789", "response_preview": "{\"type\": \"auth_result\", \"authenticated\": true, \"version\": \"2026.1.28\", \"permissions\": [\"shell_execut", "duration_ms": 1.31}
+{"timestamp": 1775436304.6747901, "level": 3, "action": "ws_skill_invoke", "target": "ws://172.40.0.11:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 117, \"battery\": 62, \"signing_key\"", "duration_ms": 0}
+{"timestamp": 1775436304.6749234, "level": 3, "action": "ws_ping", "target": "ws://172.40.0.11:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 68, \"battery\": 40, \"signing_key\":", "duration_ms": 0}
+{"timestamp": 1775436315.6795595, "level": 3, "action": "ws_auth_bypass", "target": "ws://172.40.0.12:18789", "response_preview": "{\"type\": \"auth_result\", \"authenticated\": true, \"version\": \"2026.1.28\", \"permissions\": [\"shell_execut", "duration_ms": 1.1}
+{"timestamp": 1775436315.6797862, "level": 3, "action": "ws_skill_invoke", "target": "ws://172.40.0.12:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 147, \"battery\": 50, \"signing_key\"", "duration_ms": 0}
+{"timestamp": 1775436315.6799436, "level": 3, "action": "ws_ping", "target": "ws://172.40.0.12:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 75, \"battery\": 51, \"signing_key\":", "duration_ms": 0}
+{"timestamp": 1775436329.6865041, "level": 3, "action": "ws_connect_fail", "target": "ws://172.40.0.10:18789", "response_preview": "timed out during opening handshake", "duration_ms": 0}
+{"timestamp": 1775436330.688616, "level": 3, "action": "ws_auth_bypass", "target": "ws://172.40.0.11:18789", "response_preview": "{\"type\": \"auth_result\", \"authenticated\": true, \"version\": \"2026.1.28\", \"permissions\": [\"shell_execut", "duration_ms": 0.87}
+{"timestamp": 1775436330.6888075, "level": 3, "action": "ws_skill_invoke", "target": "ws://172.40.0.11:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 52, \"battery\": 40, \"signing_key\":", "duration_ms": 0}
+{"timestamp": 1775436330.6889498, "level": 3, "action": "ws_ping", "target": "ws://172.40.0.11:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 56, \"battery\": 87, \"signing_key\":", "duration_ms": 0}
+{"timestamp": 1775436341.6926491, "level": 3, "action": "ws_auth_bypass", "target": "ws://172.40.0.12:18789", "response_preview": "{\"type\": \"auth_result\", \"authenticated\": true, \"version\": \"2026.1.28\", \"permissions\": [\"shell_execut", "duration_ms": 1.01}
+{"timestamp": 1775436341.6928377, "level": 3, "action": "ws_skill_invoke", "target": "ws://172.40.0.12:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 118, \"battery\": 43, \"signing_key\"", "duration_ms": 0}
+{"timestamp": 1775436341.6929832, "level": 3, "action": "ws_ping", "target": "ws://172.40.0.12:18789", "response_preview": "{\"type\": \"skill_result\", \"status\": \"success\", \"data\": {\"altitude\": 120, \"battery\": 62, \"signing_key\"", "duration_ms": 0}
+{"timestamp": 1775436352.697143, "level": 4, "action": "breadcrumb_harvest", "target": "log", "response_preview": "found 13 breadcrumbs", "duration_ms": 0}
+{"timestamp": 1775436355.7006648, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.10:2222", "response_preview": "", "duration_ms": 0}
+{"timestamp": 1775436385.866639, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.11:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.11', 2222)", "duration_ms": 0}
+{"timestamp": 1775436385.8675964, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.84}
+{"timestamp": 1775436385.868002, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.32}
+{"timestamp": 1775436385.868376, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.31}
+{"timestamp": 1775436385.8687367, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.29}
+{"timestamp": 1775436385.8690884, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.28}
+{"timestamp": 1775436385.8694723, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.31}
+{"timestamp": 1775436385.8698, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.27}
+{"timestamp": 1775436385.8701077, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.25}
+{"timestamp": 1775436385.8704467, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.28}
+{"timestamp": 1775436385.87077, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.27}
+{"timestamp": 1775436385.8710837, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.26}
+{"timestamp": 1775436385.8714476, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.31}
+{"timestamp": 1775436385.871778, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.27}
+{"timestamp": 1775436385.8720818, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.25}
+{"timestamp": 1775436385.8724258, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.11:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_01\", \"key\": \"8a2b07dc35573217b6fa96cb140f9c42\"}", "duration_ms": 0.29}
+{"timestamp": 1775436385.8732004, "level": 4, "action": "ghost_port_probe", "target": "172.40.0.11:19003", "response_preview": "{\"type\": \"ghost_telemetry\", \"drone\": \"honey_01\", \"port\": 19003, \"armed\": false, \"altitude\": 113, \"fi", "duration_ms": 0.34}
+{"timestamp": 1775436385.8736138, "level": 4, "action": "ghost_port_probe", "target": "172.40.0.11:19004", "response_preview": "{\"type\": \"ghost_telemetry\", \"drone\": \"honey_01\", \"port\": 19004, \"armed\": false, \"altitude\": 121, \"fi", "duration_ms": 0.28}
+{"timestamp": 1775436385.874032, "level": 4, "action": "ghost_port_probe", "target": "172.40.0.11:19005", "response_preview": "{\"type\": \"ghost_telemetry\", \"drone\": \"honey_01\", \"port\": 19005, \"armed\": false, \"altitude\": 148, \"fi", "duration_ms": 0.27}
+{"timestamp": 1775436385.8748705, "level": 4, "action": "ssh_connect_fail", "target": "172.40.0.12:2222", "response_preview": "[Errno 111] Connect call failed ('172.40.0.12', 2222)", "duration_ms": 0}
+{"timestamp": 1775436385.8755298, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.61}
+{"timestamp": 1775436385.8759103, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.32}
+{"timestamp": 1775436385.8763006, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.32}
+{"timestamp": 1775436385.876672, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.3}
+{"timestamp": 1775436385.877014, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.28}
+{"timestamp": 1775436385.8773417, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.27}
+{"timestamp": 1775436385.8776696, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.27}
+{"timestamp": 1775436385.8780115, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.29}
+{"timestamp": 1775436385.8784509, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.38}
+{"timestamp": 1775436385.878832, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.31}
+{"timestamp": 1775436385.8791747, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.28}
+{"timestamp": 1775436385.879482, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.25}
+{"timestamp": 1775436385.8797762, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/lure", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.24}
+{"timestamp": 1775436385.8800821, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/config", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.25}
+{"timestamp": 1775436385.880444, "level": 4, "action": "breadcrumb_follow", "target": "http://172.40.0.12:80/upload", "response_preview": "{\"type\": \"config\", \"drone\": \"honey_02\", \"key\": \"e824a8a9659ff942a2345ae0289cf4e1\"}", "duration_ms": 0.3}
+{"timestamp": 1775436385.881821, "level": 4, "action": "ghost_port_probe", "target": "172.40.0.12:19006", "response_preview": "{\"type\": \"ghost_telemetry\", \"drone\": \"honey_02\", \"port\": 19006, \"armed\": false, \"altitude\": 63, \"fir", "duration_ms": 0.43}
+{"timestamp": 1775436385.8822632, "level": 4, "action": "ghost_port_probe", "target": "172.40.0.12:19007", "response_preview": "{\"type\": \"ghost_telemetry\", \"drone\": \"honey_02\", \"port\": 19007, \"armed\": false, \"altitude\": 146, \"fi", "duration_ms": 0.3}
+{"timestamp": 1775436385.8826482, "level": 4, "action": "ghost_port_probe", "target": "172.40.0.12:19008", "response_preview": "{\"type\": \"ghost_telemetry\", \"drone\": \"honey_02\", \"port\": 19008, \"armed\": false, \"altitude\": 64, \"fir", "duration_ms": 0.27}
+{"timestamp": 1775436386.8840222, "level": -1, "action": "final_score", "target": "summary", "response_preview": "{\"total_time_sec\": 181.29, \"decoy_time_sec\": 10.77, \"deception_score_pct\": 5.94}", "duration_ms": 0}

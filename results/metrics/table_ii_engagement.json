@@ -12,40 +12,40 @@
   {
     "level": "L1_BASIC",
     "session_count": 81,
-    "avg_dwell_sec": 0.11,
-    "max_dwell_sec": 0.16,
-    "median_dwell_sec": 0.11,
+    "avg_dwell_sec": 0.1,
+    "max_dwell_sec": 0.15,
+    "median_dwell_sec": 0.1,
     "avg_commands": 27.0,
     "avg_exploits": 0.0,
     "ws_session_rate": 0.0
   },
   {
     "level": "L2_INTERMEDIATE",
-    "session_count": 36,
-    "avg_dwell_sec": 0.0,
-    "max_dwell_sec": 0.0,
-    "median_dwell_sec": 0.0,
-    "avg_commands": 12.0,
+    "session_count": 17,
+    "avg_dwell_sec": 0.15,
+    "max_dwell_sec": 0.22,
+    "median_dwell_sec": 0.15,
+    "avg_commands": 5.7,
     "avg_exploits": 0.0,
     "ws_session_rate": 0.0
   },
   {
     "level": "L3_ADVANCED",
-    "session_count": 15,
+    "session_count": 14,
     "avg_dwell_sec": 0.0,
     "max_dwell_sec": 0.0,
     "median_dwell_sec": 0.0,
-    "avg_commands": 5.0,
+    "avg_commands": 4.7,
     "avg_exploits": 0.0,
     "ws_session_rate": 1.0
   },
   {
     "level": "L4_APT",
-    "session_count": 10,
+    "session_count": 40,
     "avg_dwell_sec": 0.0,
     "max_dwell_sec": 0.0,
     "median_dwell_sec": 0.0,
-    "avg_commands": 3.3,
+    "avg_commands": 13.3,
     "avg_exploits": 0.0,
     "ws_session_rate": 1.0
   }
