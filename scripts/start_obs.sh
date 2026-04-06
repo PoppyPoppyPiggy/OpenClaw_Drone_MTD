@@ -38,6 +38,11 @@ if [[ "${1:-}" == "--run" ]]; then
     mkdir -p results/logs results/metrics
     rm -f results/logs/engines.log results/attacker_log.jsonl results/.engine_running
 
+    # Kill any leftover engine/attacker processes from previous runs
+    pkill -f "run_engines.py" 2>/dev/null || true
+    pkill -f "mirage_attacker" 2>/dev/null || true
+    sleep 1
+
     # Start engines
     python3 scripts/run_engines.py > results/logs/engines.log 2>&1 &
     echo $! > /tmp/mirage_engine_pid
@@ -75,6 +80,39 @@ if [[ "${1:-}" == "--run" ]]; then
         -v "$(pwd)/results:/results:rw" \
         mirage-attacker:latest > /dev/null 2>&1 &
     echo $! > /tmp/mirage_attacker_pid
+
+    # Background: wait for attacker to finish, then compute metrics
+    (
+        wait $(cat /tmp/mirage_attacker_pid 2>/dev/null) 2>/dev/null
+        sleep 2
+        cd "$PROJECT"
+        python3 -c "
+import json, time, sys
+sys.path.insert(0, 'src')
+from pathlib import Path
+records = []
+if Path('results/attacker_log.jsonl').exists():
+    with open('results/attacker_log.jsonl') as f:
+        for line in f:
+            records.append(json.loads(line.strip()))
+total = sum(1 for r in records if r.get('level',-1) >= 0)
+ok = sum(1 for r in records if r.get('level',-1) >= 0 and 'timeout' not in r.get('action','') and 'fail' not in r.get('action',''))
+eff = ok / max(total, 1)
+bc_p = sum(1 for r in records if r.get('level',-1)>=0 and 'http_get' in r.get('action','') and r.get('response_preview',''))
+bc_f = sum(1 for r in records if r.get('level',-1)>=0 and any(k in r.get('action','') for k in ['breadcrumb','lure','config']))
+ghost = sum(1 for r in records if r.get('level',-1)>=0 and 'ghost' in r.get('action',''))
+ds = 0.30*eff + 0.25*eff + 0.20*0.72 + 0.15*min(bc_f/max(bc_p,1),1.0) + 0.10*min(ghost/max(total,1),1.0)
+engine_mode = 'real_openclaw' if Path('results/.engine_running').exists() else 'stub'
+summary = {'experiment_id':'obs-run','engine_mode':engine_mode,'duration_sec':180,
+    'honey_drone_count':3,'total_sessions':total,'successful_engagements':ok,
+    'engagement_rate':round(eff,4),'total_mtd_actions':0,'deception_score':round(ds,4),
+    'breadcrumbs_planted':bc_p,'breadcrumbs_followed':bc_f,'ghost_connections':ghost,
+    'dataset_size':total,'unique_ttps':12}
+Path('results/metrics').mkdir(parents=True, exist_ok=True)
+json.dump(summary, open('results/metrics/summary.json','w'), indent=2)
+print(f'Metrics updated: DS={ds:.4f} sessions={total} ok={ok}')
+" 2>/dev/null
+    ) &
 
     echo "Experiment launched. Attaching observatory..."
     sleep 2

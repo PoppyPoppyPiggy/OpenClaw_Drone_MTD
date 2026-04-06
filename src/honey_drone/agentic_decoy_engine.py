@@ -359,6 +359,14 @@ class AgenticDecoyEngine:
             await self._ws_server.wait_closed()
         except asyncio.CancelledError:
             pass
+        except OSError as e:
+            # Port already in use — non-fatal, skip WS server
+            logger.warning(
+                "websocket port unavailable (skipping)",
+                drone_id=self._config.drone_id,
+                port=self._config.webclaw_port,
+                error=str(e),
+            )
         except Exception as e:
             logger.error(
                 "websocket server error",
