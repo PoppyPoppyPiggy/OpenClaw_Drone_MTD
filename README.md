@@ -59,6 +59,8 @@ Opens **http://localhost:8888** with 17 live charts.
 | `bash run.sh` | Full pipeline (stub mode) + dashboard | ~5 min |
 | `bash scripts/run_full.sh` | **Real OpenClawAgent** + Docker + attacker | ~5 min |
 | `bash scripts/run_multiview.sh` | Real agent + multi-terminal live view | ~5 min |
+| `bash scripts/start_obs.sh --run` | **tmux 5-pane observatory** + experiment | ~5 min |
+| `bash scripts/start_obs.sh` | Attach observatory to running experiment | instant |
 | `bash scripts/start_dashboard.sh` | Dashboard only | instant |
 
 ### Setup
