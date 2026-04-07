@@ -127,6 +127,19 @@ Start the server: `bash scripts/start_dashboard.sh`
 
 ---
 
+### Observatory UDP Ports (Agent Monitor)
+
+| Port | Direction | Content |
+|------|-----------|---------|
+| 19996 | Engine → Monitor | Packet-level diffs (MAVLink response details) |
+| 19997 | Agent → Monitor | Internal state diffs (before/after variable changes) |
+| 19998 | Agent → Monitor | Decision events (phase transitions, behavior triggers) |
+| 19999 | Engine → Monitor | State snapshots (1/sec per drone, full status) |
+
+Run `python3 scripts/obs/obs_openclaw.py` to view all 4 streams in a live terminal UI.
+
+---
+
 ## Paper Contributions
 
 1. **C1**: First MTD + Agentic Decoy framework for UAS — extends D3GF (Seo et al., IEEE Access 2023) with real decoy deployment

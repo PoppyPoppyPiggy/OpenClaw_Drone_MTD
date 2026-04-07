@@ -116,6 +116,10 @@ class AgenticDecoyEngine:
         self._udp_sock: Optional[socket.socket] = None
         # WebSocket 서버
         self._ws_server = None
+        # UDP 상태 브로드캐스트 소켓
+        self._broadcast_sock: Optional[socket.socket] = None
+        # MTD 트리거 카운트
+        self._mtd_trigger_count: int = 0
 
     @property
     def status(self) -> DroneStatus:
@@ -138,10 +142,15 @@ class AgenticDecoyEngine:
         await self._openclaw_agent.start()
         self._setup_udp_socket()
 
+        # 상태 브로드캐스트 UDP 소켓 생성
+        self._broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._broadcast_sock.setblocking(False)
+
         self._tasks = [
             asyncio.create_task(self._receive_loop(),       name=f"recv_{self._config.drone_id}"),
             asyncio.create_task(self._websocket_server(),   name=f"ws_{self._config.drone_id}"),
             asyncio.create_task(self._telemetry_loop(),     name=f"tele_{self._config.drone_id}"),
+            asyncio.create_task(self._state_broadcast_loop(), name=f"bcast_{self._config.drone_id}"),
         ]
         self._status = DroneStatus.IDLE
         logger.info(
@@ -166,6 +175,9 @@ class AgenticDecoyEngine:
 
         if self._udp_sock:
             self._udp_sock.close()
+        if self._broadcast_sock:
+            self._broadcast_sock.close()
+            self._broadcast_sock = None
         if self._ws_server:
             self._ws_server.close()
             await self._ws_server.wait_closed()
@@ -560,6 +572,7 @@ class AgenticDecoyEngine:
         )
 
         await self._mtd_trigger_q.put(trigger)
+        self._mtd_trigger_count += 1
         self._status = (
             DroneStatus.UNDER_ATTACK
             if metrics.exploit_attempts >= ENGAGEMENT_EXPLOIT_THRESHOLD
@@ -574,6 +587,113 @@ class AgenticDecoyEngine:
             urgency=round(urgency, 3),
             actions=actions,
         )
+
+    # ── 상태 브로드캐스트 ──────────────────────────────────────────────────────
+
+    async def _state_broadcast_loop(self) -> None:
+        """
+        [ROLE] 1초 주기로 엔진 상태 JSON 스냅샷을 UDP 브로드캐스트.
+               외부 모니터/대시보드가 localhost:19999에서 수신.
+
+        [DATA FLOW]
+            openclaw_agent + tracker + belief_mgr
+            ──▶ JSON snapshot ──▶ UDP sendto 127.0.0.1:19999
+        """
+        while True:
+            try:
+                await asyncio.sleep(1.0)
+
+                if self._broadcast_sock is None:
+                    continue
+
+                # --- 최근 공격자 IP & 공격 단계 ---
+                attacker_ip = ""
+                current_phase = "IDLE"
+                attacker_level = "---"
+                fingerprints = getattr(self._openclaw_agent, "_fingerprints", {})
+                if fingerprints:
+                    # 가장 최근 지문 (dict 순서 보장 Python 3.7+)
+                    last_key = list(fingerprints.keys())[-1]
+                    fp = fingerprints[last_key]
+                    attacker_ip = getattr(fp, "attacker_ip", "")
+                    current_phase = getattr(fp, "attack_phase", "IDLE")
+                    if hasattr(current_phase, "value"):
+                        current_phase = current_phase.value
+                    else:
+                        current_phase = str(current_phase)
+
+                # --- 최근 결정 ---
+                last_action = ""
+                last_action_reason = ""
+                decisions = getattr(self._openclaw_agent, "_decisions", [])
+                if decisions:
+                    last_dec = decisions[-1]
+                    last_action = getattr(last_dec, "behavior_triggered", "")
+                    last_action_reason = getattr(last_dec, "rationale", "")
+
+                # --- 활성 행동 목록 ---
+                active_behaviors = ["proactive_loop", "sysid_rotation"]
+                if getattr(self._openclaw_agent, "_false_flag_active", False):
+                    active_behaviors.append("false_flag")
+                if getattr(self._openclaw_agent, "_mirror_active", False):
+                    active_behaviors.append("service_mirror")
+                if getattr(self._openclaw_agent, "_silenced", False):
+                    active_behaviors.append("reboot_sim")
+
+                # --- 트래커 메트릭 ---
+                dwell_seconds = 0.0
+                commands_received = 0
+                all_metrics = self._tracker.get_all_active_metrics(
+                    self._config.drone_id
+                )
+                for m in all_metrics:
+                    dwell_seconds += getattr(m, "dwell_time_sec", 0.0)
+                    commands_received += getattr(m, "command_count", 0)
+                    if not attacker_ip:
+                        attacker_ip = getattr(m, "attacker_ip", "")
+
+                # --- 공격자 수준 분류 ---
+                if all_metrics:
+                    lvl = self._tracker.classify_attacker(all_metrics[-1])
+                    attacker_level = lvl.name if hasattr(lvl, "name") else str(lvl)
+
+                # --- 믿음 점수 & confusion delta ---
+                belief_score = self.get_avg_confusion()
+                beliefs = self._belief_mgr.get_all_beliefs()
+                confusion_delta = 0.0
+                if beliefs:
+                    confusion_delta = belief_score - 0.70  # delta from prior
+
+                # --- 세션 ID ---
+                session_id = ""
+                if attacker_ip:
+                    session_id = self._get_or_create_session_id(attacker_ip)
+
+                snapshot = {
+                    "drone_id": self._config.drone_id,
+                    "timestamp": time.time(),
+                    "attacker_ip": attacker_ip,
+                    "current_phase": current_phase,
+                    "attacker_level": attacker_level,
+                    "belief_score": belief_score,
+                    "active_behaviors": active_behaviors,
+                    "last_action": last_action,
+                    "last_action_reason": last_action_reason,
+                    "dwell_seconds": dwell_seconds,
+                    "commands_received": commands_received,
+                    "mtd_triggers_sent": self._mtd_trigger_count,
+                    "confusion_delta": confusion_delta,
+                    "session_id": session_id,
+                }
+
+                payload = json.dumps(snapshot).encode("utf-8")
+                self._broadcast_sock.sendto(payload, ("127.0.0.1", 19999))
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                # Fire-and-forget: never crash the engine
+                pass
 
     # ── OpenClaw API 에뮬레이션 (폴백) ───────────────────────────────────────
 

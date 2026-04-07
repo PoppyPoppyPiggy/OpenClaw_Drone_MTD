@@ -121,7 +121,7 @@ fi
 # Create tmux session with 5 panes
 # Pane 0: OpenClaw (top-left)
 tmux new-session -d -s "$SESSION" -x 200 -y 50
-tmux send-keys -t "$SESSION" "cd $(pwd) && python3 scripts/obs/obs_openclaw.py" C-m
+tmux send-keys -t "$SESSION" "cd $(pwd) && echo '  Real-time agent decisions via UDP:19998/19999' && python3 scripts/obs/obs_openclaw.py" C-m
 
 # Pane 1: OMNeT++ (top-center)
 tmux split-window -h -t "$SESSION"

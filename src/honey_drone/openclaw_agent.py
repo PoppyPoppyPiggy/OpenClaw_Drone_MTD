@@ -52,10 +52,11 @@ import hashlib
 import json
 import math
 import random
+import socket
 import struct
 import time
 import uuid
-from typing import Optional
+from typing import Optional, Union
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as apm
@@ -168,6 +169,9 @@ class OpenClawAgent:
         self._silenced: bool = False  # 재부팅 시뮬레이션 중 응답 차단
         self._mirror_active: bool = False  # service mirroring 활성 여부
         self._false_flag_active: bool = False  # false flag 진행 중 여부
+        self._active_ghost_ports: list[int] = []
+        self._planted_credentials: dict[str, str] = {}
+        self._current_gps: dict[str, float] = {"lat": 37.5665, "lon": 126.9780, "alt": 100.0}
         self._decisions: list[AgentDecision] = []
         self._tasks: list[asyncio.Task] = []
         self._state_lock = asyncio.Lock()  # _silenced, _current_sysid 동기화
@@ -264,7 +268,7 @@ class OpenClawAgent:
 
         self._check_confusion_triggers(ip)
 
-    def observe_ws(self, raw_msg: str | bytes, attacker_ip: str) -> None:
+    def observe_ws(self, raw_msg: Union[str, bytes], attacker_ip: str) -> None:
         """
         [ROLE] WebSocket 메시지 관찰 — 도구 시그니처 탐지 + 대화 이력.
                AgenticDecoyEngine._websocket_handler()에서 호출.
@@ -328,7 +332,7 @@ class OpenClawAgent:
 
         return None
 
-    def generate_ws_response(self, raw_msg: str | bytes, attacker_ip: str) -> Optional[dict]:
+    def generate_ws_response(self, raw_msg: Union[str, bytes], attacker_ip: str) -> Optional[dict]:
         """
         [ROLE] WebSocket 메시지에 대한 적응형 JSON 응답 생성.
 
@@ -421,6 +425,17 @@ class OpenClawAgent:
                     "sysid_rotation",
                     rationale=f"sysid {old_sysid} -> {self._current_sysid}",
                 )
+                self._emit_state_diff(
+                    "sysid_rotation",
+                    trigger="sysid_rotation_timer",
+                    changes=[{
+                        "variable": "_current_sysid",
+                        "before": old_sysid,
+                        "after": self._current_sysid,
+                        "wire_level_change": f"HEARTBEAT srcSystem byte: 0x{old_sysid:02x} -> 0x{self._current_sysid:02x}",
+                        "effect_on_attacker": "MAVLink srcSystem in all future packets changes",
+                    }],
+                )
                 logger.debug(
                     "sysid rotated",
                     drone_id=self._config.drone_id,
@@ -449,6 +464,17 @@ class OpenClawAgent:
                     "port_rotation",
                     rationale=f"ws_port {old_port} -> {self._current_ws_port}",
                 )
+                self._emit_state_diff(
+                    "port_rotation",
+                    trigger="port_rotation_timer",
+                    changes=[{
+                        "variable": "_current_ws_port",
+                        "before": old_port,
+                        "after": self._current_ws_port,
+                        "wire_level_change": f"WebSocket endpoint moves from :{old_port} to :{self._current_ws_port}",
+                        "effect_on_attacker": "WebSocket connections on old port will fail",
+                    }],
+                )
                 logger.debug(
                     "ws_port rotated",
                     drone_id=self._config.drone_id,
@@ -470,10 +496,23 @@ class OpenClawAgent:
         while True:
             try:
                 await asyncio.sleep(_MISSION_REFRESH_SEC)
+                old_count = len(self._fake_waypoints)
                 self._fake_waypoints = self._generate_waypoints()
+                new_count = len(self._fake_waypoints)
                 self._record_decision(
                     "mission_refresh",
-                    rationale=f"generated {len(self._fake_waypoints)} waypoints",
+                    rationale=f"generated {new_count} waypoints",
+                )
+                self._emit_state_diff(
+                    "mission_refresh",
+                    trigger="mission_refresh_timer",
+                    changes=[{
+                        "variable": "_fake_waypoints.count",
+                        "before": old_count,
+                        "after": new_count,
+                        "wire_level_change": f"MISSION_COUNT changes from {old_count} to {new_count}",
+                        "effect_on_attacker": "Mission download returns different waypoints",
+                    }],
                 )
             except asyncio.CancelledError:
                 break
@@ -490,11 +529,28 @@ class OpenClawAgent:
         while True:
             try:
                 await asyncio.sleep(_PARAM_CYCLE_SEC)
+                # Capture before values for top changed params
+                before_snapshot = dict(list(self._fake_params.items())[:3])
                 for key in self._fake_params:
                     self._fake_params[key] *= 1.0 + random.gauss(0, 0.005)
                 self._record_decision(
                     "param_cycle",
                     rationale="cycled fake param values",
+                )
+                param_changes = []
+                for key, old_val in before_snapshot.items():
+                    new_val = self._fake_params[key]
+                    param_changes.append({
+                        "variable": f"_param_values.{key}",
+                        "before": round(old_val, 4),
+                        "after": round(new_val, 4),
+                        "wire_level_change": f"PARAM_VALUE field: {old_val:.4f} -> {new_val:.4f}",
+                        "effect_on_attacker": "Parameter read returns drifted value",
+                    })
+                self._emit_state_diff(
+                    "param_cycle",
+                    trigger="param_cycle_timer",
+                    changes=param_changes,
                 )
             except asyncio.CancelledError:
                 break
@@ -548,12 +604,25 @@ class OpenClawAgent:
             랜덤 포트 선택 ──▶ STATUSTEXT 힌트 생성 ──▶ 로그
         """
         ghost_port = random.randint(19000, 19500)
+        old_ghost_ports = list(self._active_ghost_ports)
+        self._active_ghost_ports.append(ghost_port)
         self._record_decision(
             "proactive_ghost_port",
             rationale=(
                 f"opened ghost port {ghost_port}, "
                 f"ws hint :{self._current_ws_port}"
             ),
+        )
+        self._emit_state_diff(
+            "proactive_ghost_port",
+            trigger="proactive_loop",
+            changes=[{
+                "variable": "_active_ghost_ports",
+                "before": old_ghost_ports,
+                "after": list(self._active_ghost_ports),
+                "wire_level_change": f"TCP port {ghost_port} now accepts connections",
+                "effect_on_attacker": "Port scan discovers new open service",
+            }],
         )
         logger.info(
             "proactive_ghost_port",
@@ -585,11 +654,32 @@ class OpenClawAgent:
         async with self._state_lock:
             self._silenced = False
             # 재부팅 후 새 sysid로 복귀 (다른 포트에서 나타나는 것처럼)
+            pre_reboot_sysid = self._current_sysid
             self._current_sysid = random.randint(1, 254)
             self._mav = mavutil.mavlink.MAVLink(
                 file=None, srcSystem=self._current_sysid, srcComponent=1
             )
             self._mav.robust_parsing = True
+        self._emit_state_diff(
+            "proactive_reboot",
+            trigger="proactive_loop",
+            changes=[
+                {
+                    "variable": "_silenced",
+                    "before": True,
+                    "after": False,
+                    "wire_level_change": "Drone resumes responding to packets",
+                    "effect_on_attacker": "Drone reappears after silence period",
+                },
+                {
+                    "variable": "_current_sysid",
+                    "before": pre_reboot_sysid,
+                    "after": self._current_sysid,
+                    "wire_level_change": f"HEARTBEAT srcSystem byte: 0x{pre_reboot_sysid:02x} -> 0x{self._current_sysid:02x}",
+                    "effect_on_attacker": "Drone appears as different system after reboot",
+                },
+            ],
+        )
         logger.info(
             "proactive_reboot_done",
             drone_id=self._config.drone_id,
@@ -606,6 +696,7 @@ class OpenClawAgent:
         fake_key = hashlib.sha256(
             f"{self._config.drone_id}:{time.time()}".encode()
         ).hexdigest()[:32]
+        self._planted_credentials[f"signing_key_{int(time.time())}"] = fake_key
         self._record_decision(
             "proactive_fake_key",
             rationale=f"leaked fake signing key: {fake_key[:8]}...",
@@ -675,12 +766,44 @@ class OpenClawAgent:
 
         # 다른 범위의 sysid로 변경 (정상: 1-50, false flag: 51-100)
         fake_sysid = random.randint(51, 100)
+        original_gps = dict(self._current_gps)
         async with self._state_lock:
             self._current_sysid = fake_sysid
             self._mav = mavutil.mavlink.MAVLink(
                 file=None, srcSystem=self._current_sysid, srcComponent=1
             )
             self._mav.robust_parsing = True
+            # Shift GPS ~12km to simulate different drone location
+            self._current_gps["lat"] += 0.1
+            self._current_gps["lon"] += 0.1
+
+        self._emit_state_diff(
+            "false_flag",
+            trigger=f"dwell_threshold:{attacker_ip}",
+            changes=[
+                {
+                    "variable": "_current_sysid",
+                    "before": original_sysid,
+                    "after": fake_sysid,
+                    "wire_level_change": f"HEARTBEAT srcSystem byte: 0x{original_sysid:02x} -> 0x{fake_sysid:02x}",
+                    "effect_on_attacker": "Drone appears as completely different system",
+                },
+                {
+                    "variable": "_false_flag_active",
+                    "before": False,
+                    "after": True,
+                    "wire_level_change": "Identity pivot active for 30s",
+                    "effect_on_attacker": "All responses now impersonate different drone",
+                },
+                {
+                    "variable": "_current_gps",
+                    "before": original_gps,
+                    "after": dict(self._current_gps),
+                    "wire_level_change": f"GPS position shifted ~12km",
+                    "effect_on_attacker": "Drone appears at different geographic location",
+                },
+            ],
+        )
 
         logger.info(
             "false_flag_start",
@@ -700,6 +823,7 @@ class OpenClawAgent:
             )
             self._mav.robust_parsing = True
             self._false_flag_active = False
+            self._current_gps = original_gps
 
         logger.info(
             "false_flag_end",
@@ -787,6 +911,8 @@ class OpenClawAgent:
         if len(cmds) < 3:
             return
 
+        old_tool = fp.tool
+
         # 타이밍 분석: conversation history에서 inter-arrival 계산
         all_histories = []
         for ip, history in self._conversation_history.items():
@@ -808,34 +934,38 @@ class OpenClawAgent:
         # nmap: 매우 빠른 버스트 스캔, 다양한 메시지 유형, 짧은 간격
         if avg_interval < 0.1 and len(unique_cmds) > 5:
             fp.tool = AttackerTool.NMAP_SCANNER
-            return
 
         # mavproxy: HEARTBEAT을 1Hz로 전송 후 REQUEST_DATA_STREAM
-        if (
+        elif (
             (len(cmds) >= 3 and cmds[:3] == ["HEARTBEAT", "HEARTBEAT", "REQUEST_DATA_STREAM"])
             or ("REQUEST_DATA_STREAM" in unique_cmds and avg_interval > 0.8)
         ):
             fp.tool = AttackerTool.MAVPROXY_GCS
-            return
 
         # dronekit: HEARTBEAT → REQUEST_DATA_STREAM → SET_MODE(GUIDED) 시퀀스
-        if "SET_MODE" in unique_cmds and "REQUEST_DATA_STREAM" in unique_cmds:
+        elif "SET_MODE" in unique_cmds and "REQUEST_DATA_STREAM" in unique_cmds:
             fp.tool = AttackerTool.DRONEKIT_SCRIPT
-            return
 
         # metasploit: 불규칙 타이밍 + exploit 특화 명령 혼합
-        exploit_cmds = {"FILE_TRANSFER_PROTOCOL", "LOG_REQUEST_DATA",
-                        "SET_ACTUATOR_CONTROL_TARGET", "GPS_INJECT_DATA"}
-        if len(unique_cmds & exploit_cmds) >= 2 and avg_interval < 2.0:
+        elif len(unique_cmds & {"FILE_TRANSFER_PROTOCOL", "LOG_REQUEST_DATA",
+                        "SET_ACTUATOR_CONTROL_TARGET", "GPS_INJECT_DATA"}) >= 2 and avg_interval < 2.0:
             fp.tool = AttackerTool.METASPLOIT_MODULE
-            return
 
         # custom exploit: 위험 명령 사용하지만 알려진 도구 패턴 아님
-        dangerous = {"PARAM_SET", "FILE_TRANSFER_PROTOCOL", "LOG_REQUEST_LIST",
-                     "SET_ACTUATOR_CONTROL_TARGET", "MISSION_ITEM"}
-        if unique_cmds & dangerous:
+        elif unique_cmds & {"PARAM_SET", "FILE_TRANSFER_PROTOCOL", "LOG_REQUEST_LIST",
+                     "SET_ACTUATOR_CONTROL_TARGET", "MISSION_ITEM"}:
             fp.tool = AttackerTool.CUSTOM_EXPLOIT
-            return
+
+        # Emit level reclassification if tool changed
+        if fp.tool != old_tool:
+            evidence = list(cmds[-3:]) if len(cmds) >= 3 else list(cmds)
+            self._udp_emit(19998, {
+                "event": "level_reclassified",
+                "drone_id": self._config.drone_id,
+                "from_level": old_tool.value if old_tool else "unknown",
+                "to_level": fp.tool.value,
+                "evidence": evidence,
+            })
 
     def _detect_attack_phase(self, fp: AttackerFingerprint, attacker_ip: str) -> None:
         """
@@ -874,6 +1004,26 @@ class OpenClawAgent:
 
         if fp.attack_phase != old_phase:
             fp.phase_changed_at_ns = time.time_ns()
+
+            # Determine response strategy based on new phase
+            _strategy_map = {
+                AttackPhase.RECON: "rich telemetry to maximize engagement",
+                AttackPhase.EXPLOIT: "partial success signals to extend session",
+                AttackPhase.PERSIST: "operator-like activity to maintain illusion",
+                AttackPhase.EXFIL: "fake logs and config dumps",
+            }
+            last_cmd = history[-1][0] if history else "unknown"
+            self._udp_emit(19998, {
+                "event": "phase_transition",
+                "drone_id": self._config.drone_id,
+                "from_phase": old_phase.value,
+                "to_phase": fp.attack_phase.value,
+                "trigger_command": last_cmd,
+                "response_strategy": _strategy_map.get(
+                    fp.attack_phase, "adaptive response"
+                ),
+            })
+
             logger.info(
                 "attack_phase_changed",
                 drone_id=self._config.drone_id,
@@ -1179,6 +1329,36 @@ class OpenClawAgent:
             })
         return waypoints
 
+    def _udp_emit(self, port: int, data: dict) -> None:
+        """Fire-and-forget UDP emit to localhost."""
+        try:
+            raw = json.dumps(data, default=str).encode("utf-8")
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.sendto(raw, ("127.0.0.1", port))
+            finally:
+                sock.close()
+        except Exception:
+            pass
+
+    def _emit_state_diff(
+        self,
+        behavior: str,
+        changes: list,
+        trigger: str = "",
+        attacker_visible: bool = True,
+    ) -> None:
+        """Emit an internal_state_diff event on UDP 19997."""
+        self._udp_emit(19997, {
+            "event": "internal_state_diff",
+            "drone_id": self._config.drone_id,
+            "timestamp": time.time(),
+            "trigger": trigger or behavior,
+            "behavior": behavior,
+            "changes": changes,
+            "attacker_visible": attacker_visible,
+        })
+
     def _record_decision(
         self,
         behavior: str,
@@ -1199,6 +1379,46 @@ class OpenClawAgent:
             executed=True,
         )
         self._decisions.append(decision)
+
+        # UDP emit decision event on port 19998
+        fp_active = None
+        for _fp in self._fingerprints.values():
+            fp_active = _fp
+            break
+        phase = fp_active.attack_phase.value if fp_active else "RECON"
+        level = fp_active.tool.value if fp_active else "unknown"
+        dwell = (
+            (time.time_ns() - fp_active.first_seen_ns) / 1e9
+            if fp_active
+            else 0.0
+        )
+        confidence = min(1.0, len(self._decisions) / 20.0)
+        effect_map = {
+            "sysid_rotation": "MAVLink srcSystem changes in future packets",
+            "port_rotation": "WebSocket endpoint moves to new port",
+            "param_cycle": "Parameter values drift over time",
+            "mission_refresh": "Mission waypoints regenerated",
+            "proactive_statustext": "Unsolicited STATUSTEXT sent",
+            "proactive_flight_sim": "Altitude telemetry simulated",
+            "proactive_ghost_port": "New TCP port accepts connections",
+            "proactive_reboot": "Drone goes silent then reappears",
+            "proactive_fake_key": "Fake signing key leaked",
+            "false_flag": "Identity pivoted to different drone",
+            "service_mirror": "Ghost port opened in response to scanning",
+            "arm_takeoff_crash": "Simulated takeoff then crash",
+        }
+        self._udp_emit(19998, {
+            "event": "agent_decision",
+            "drone_id": self._config.drone_id,
+            "timestamp": time.time(),
+            "trigger": target_ip or behavior,
+            "behavior": behavior,
+            "input_state": {"phase": phase, "level": level, "dwell": round(dwell, 2)},
+            "decision": rationale,
+            "expected_effect": effect_map.get(behavior, "state change"),
+            "confidence": round(confidence, 2),
+        })
+
         logger.debug(
             "agent_decision",
             decision_id=decision.decision_id[:8],

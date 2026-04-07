@@ -27,11 +27,14 @@ Version  : 0.1.0
 
 from __future__ import annotations
 
+import json
 import math
 import random
+import socket
 import struct
 import time
 from dataclasses import dataclass
+from typing import Optional
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as apm
@@ -110,7 +113,38 @@ class MavlinkResponseGenerator:
         )
         self._mav.robust_parsing = True
 
-    def generate(self, event: MavlinkCaptureEvent) -> bytes | None:
+    def _emit_packet_event(self, event: MavlinkCaptureEvent, response_bytes: bytes, deception_notes: list) -> None:
+        """Fire-and-forget UDP emit of packet generation event."""
+        try:
+            data = {
+                "event": "packet_generated",
+                "drone_id": self._config.drone_id,
+                "timestamp": time.time(),
+                "request_type": event.msg_type,
+                "response_bytes_hex": response_bytes[:20].hex() if response_bytes else "",
+                "key_fields": {
+                    "srcSystem": self._sysid,
+                    "type": "COPTER",
+                    "autopilot": "ARDUPILOTMEGA",
+                    "system_status": "ACTIVE" if self._state.armed else "STANDBY",
+                },
+                "deception_applied": deception_notes,
+                "vs_real_drone": {
+                    "srcSystem_real": 1,
+                    "srcSystem_sent": self._sysid,
+                    "position_jitter_m": round(abs(self._state.lat_deg - 37.5665) * 111000, 2),
+                },
+            }
+            raw = json.dumps(data).encode("utf-8")
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.sendto(raw, ("127.0.0.1", 19996))
+            finally:
+                sock.close()
+        except Exception:
+            pass
+
+    def generate(self, event: MavlinkCaptureEvent) -> Optional[bytes]:
         """
         [ROLE] 수신된 MAVLink 이벤트 유형에 따라 적절한 응답 패킷 생성.
                알 수 없는 메시지 유형은 None 반환 (응답 없음 = 정상 드론 동작).
@@ -144,7 +178,7 @@ class MavlinkResponseGenerator:
             return None
 
         try:
-            return handler(event)
+            result = handler(event)
         except Exception as e:
             logger.error(
                 "response generation failed",
@@ -153,6 +187,19 @@ class MavlinkResponseGenerator:
                 error=str(e),
             )
             return None
+
+        if result is not None:
+            deception_notes_map = {
+                "HEARTBEAT": ["sysid_offset"],
+                "PARAM_REQUEST_LIST": ["fake_param_value"],
+                "PARAM_REQUEST_READ": ["fake_param_value"],
+                "COMMAND_LONG": ["ack_always_accepted"],
+                "MISSION_REQUEST_LIST": ["fake_mission_count"],
+            }
+            notes = deception_notes_map.get(event.msg_type, ["position_jitter"])
+            self._emit_packet_event(event, result, notes)
+
+        return result
 
     # ── 응답 핸들러 ──────────────────────────────────────────────────────────────
 
@@ -297,4 +344,13 @@ class MavlinkResponseGenerator:
                 pitchspeed=random.gauss(0, 0.01),
                 yawspeed=random.gauss(0, 0.005),
             )
-        return msg.pack(self._mav)
+        pkt = msg.pack(self._mav)
+        # Emit telemetry packet event with a synthetic capture event
+        telem_event = MavlinkCaptureEvent(
+            msg_type="TELEMETRY_BROADCAST",
+            sysid=self._sysid,
+            compid=HONEY_COMPID,
+            payload_hex="",
+        )
+        self._emit_packet_event(telem_event, pkt, ["position_jitter", "telemetry_broadcast"])
+        return pkt
