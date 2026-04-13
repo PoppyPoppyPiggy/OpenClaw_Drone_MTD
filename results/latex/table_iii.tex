@@ -1,15 +1,13 @@
 \begin{table}[t]
 \centering
-\caption{MTD Response Latency by Action Type}
+\caption{MTD Response Latency and Effectiveness by Action Type}
 \label{tab:mtd-latency}
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrrrr@{\hspace{4pt}}r}
 \toprule
-Action & Count & Avg (ms) & P95 (ms) & Success \\
+Action & Count & Avg (ms) & P95 (ms) & Success & SRRP (\%) & Entropy (bits) \\
 \midrule
-PORT_ROTATE & 3 & 120.0 & 142.0 & 100.0\% \\
-IP_SHUFFLE & 2 & 450.0 & 510.0 & 100.0\% \\
-KEY_ROTATE & 2 & 180.0 & 198.0 & 100.0\% \\
-SERVICE_MIGRATE & 1 & 3200.0 & 3200.0 & 100.0\% \\
+ip_shuffle & 65 & 206.9 & 334.9 & 100.0\% & 63.3 & 16.2 \\
+port_rotate & 35 & 216.2 & 337.9 & 100.0\% & 63.3 & 16.2 \\
 \bottomrule
 \end{tabular}
 \end{table}

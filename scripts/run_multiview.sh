@@ -2,286 +2,371 @@
 # ═══════════════════════════════════════════════════════════════
 # MIRAGE-UAS Multi-Terminal Live View
 #
-# Opens 6 terminals showing every component in real time:
-#   Terminal 1: Main Controller (this terminal)
-#   Terminal 2: Honey Drone Engines (OpenClawAgent live output)
-#   Terminal 3: Attacker Simulator (L0→L4 attack packets)
-#   Terminal 4: MTD + CTI Pipeline (triggers + STIX events)
-#   Terminal 5: Dashboard Server (http://localhost:8888)
-#   Terminal 6: Live Packet Monitor (tail attacker_log.jsonl)
+# tmux 6-pane layout showing every component in real time:
+#   Pane 0 (top-left):     Honeydrone 01 logs (OpenClaw OODA decisions)
+#   Pane 1 (top-center):   Honeydrone 02 logs
+#   Pane 2 (top-right):    Honeydrone 03 logs
+#   Pane 3 (bottom-left):  Attacker L0→L4 (live attack feed)
+#   Pane 4 (bottom-center): Live Packet Monitor (colored by level)
+#   Pane 5 (bottom-right):  Metrics + MTD + BeliefState live
 #
 # Usage: bash scripts/run_multiview.sh
+#        ATTACKER_LEVEL_DURATION_SEC=120 bash scripts/run_multiview.sh
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PROJECT="$(pwd)"
 
+LEVEL_DURATION=${ATTACKER_LEVEL_DURATION_SEC:-120}
+TOTAL_MIN=$(( LEVEL_DURATION * 5 / 60 ))
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-# Track all background PIDs for cleanup
-PIDS=()
+SESSION="mirage"
+
+# ── Check tmux ────────────────────────────────────────────────
+if ! command -v tmux &>/dev/null; then
+    echo -e "${RED}tmux not installed. Install: sudo apt install tmux${NC}"
+    exit 1
+fi
+
+# ── Cleanup function ─────────────────────────────────────────
 cleanup() {
-    echo -e "\n${CYAN}Shutting down all components...${NC}"
-    for pid in "${PIDS[@]}"; do
-        kill "$pid" 2>/dev/null
-    done
-    docker rm -f fcu_test_01 fcu_test_02 fcu_test_03 cc_test_01 cc_test_02 cc_test_03 2>/dev/null || true
+    echo -e "\n${CYAN}Shutting down...${NC}"
+    docker rm -f honeydrone_01 honeydrone_02 honeydrone_03 mirage_attacker 2>/dev/null || true
     rm -f results/.engine_running
+    tmux kill-session -t "$SESSION" 2>/dev/null || true
     echo -e "${GREEN}All stopped.${NC}"
 }
 trap cleanup EXIT
 
-echo -e "${GREEN}"
-echo "═══════════════════════════════════════════════════════════"
-echo "  MIRAGE-UAS Multi-View Live Monitor"
-echo "═══════════════════════════════════════════════════════════"
-echo -e "${NC}"
-echo "This script runs all components and shows live output."
-echo "Each component writes to a separate log file."
-echo ""
-echo "Log files:"
-echo "  results/logs/engines.log     — OpenClawAgent decisions"
-echo "  results/logs/mtd.log         — MTD triggers + CTI events"
-echo "  results/logs/attacker.log    — L0-L4 attack packets"
-echo "  results/logs/dashboard.log   — API server"
-echo "  results/logs/packets.log     — Live packet feed"
-echo ""
-
-# ── Prerequisites ─────────────────────────────────────────────
-echo -e "${CYAN}[0/6] Prerequisites${NC}"
+# ── Prerequisites ────────────────────────────────────────────
+echo -e "${CYAN}[1/5] Prerequisites...${NC}"
 docker info > /dev/null 2>&1 || { echo -e "${RED}Docker not running${NC}"; exit 1; }
-pip install -q fastapi uvicorn python-dotenv pymavlink structlog aiohttp stix2 websockets docker matplotlib 2>/dev/null
-mkdir -p results/logs results/metrics results/figures results/latex
+pip install -q python-dotenv pymavlink structlog aiohttp stix2 websockets matplotlib 2>/dev/null
+mkdir -p results/logs results/metrics results/figures results/latex results/dataset
 rm -f results/attacker_log.jsonl results/.engine_running results/logs/*.log
+rm -f results/metrics/confusion_honey_*.json results/metrics/decisions_honey_*.json results/metrics/cti_honey_*.json
 echo -e "${GREEN}  OK${NC}"
 
-# ── Build Docker images ───────────────────────────────────────
-echo -e "${CYAN}[1/6] Building Docker images${NC}"
-docker build -f docker/Dockerfile.fcu-stub -t mirage-fcu-stub:latest . 2>&1 | tail -1
-docker build -f docker/Dockerfile.cc-stub  -t mirage-cc-stub:latest  . 2>&1 | tail -1
-docker build -f docker/Dockerfile.attacker -t mirage-attacker:latest . 2>&1 | tail -1
+# ── Build images ─────────────────────────────────────────────
+echo -e "${CYAN}[2/5] Building Docker images...${NC}"
+docker build -q -f docker/Dockerfile.honeydrone -t mirage-honeydrone:latest . > /dev/null
+docker build -q -f docker/Dockerfile.attacker -t mirage-attacker:latest . > /dev/null
 docker network create --subnet 172.40.0.0/24 test_net 2>/dev/null || true
-echo -e "${GREEN}  Images built${NC}"
+echo -e "${GREEN}  Images ready${NC}"
 
-# ══════════════════════════════════════════════════════════════
-# TERMINAL 2: Honey Drone Engines (real OpenClawAgent)
-# ══════════════════════════════════════════════════════════════
-echo -e "${CYAN}[2/6] Starting real OpenClaw engines...${NC}"
-python3 scripts/run_engines.py > results/logs/engines.log 2>&1 &
-PIDS+=($!)
-sleep 4
-
-# Check engines
-ENGINE_OK=0
-for port in 14551 14552 14553; do
-    if ss -ulnp 2>/dev/null | grep -q ":${port} "; then
-        echo -e "  ${GREEN}Engine UDP:${port} ✓ OpenClawAgent RUNNING${NC}"
-        ENGINE_OK=$((ENGINE_OK + 1))
-    else
-        echo -e "  ${YELLOW}Engine UDP:${port} ✗ (will use stub fallback)${NC}"
-    fi
-done
-
-ENGINE_HOST=""
-[ "$ENGINE_OK" -gt 0 ] && ENGINE_HOST="host.docker.internal"
-
-# ══════════════════════════════════════════════════════════════
-# Start Docker containers (FCU + CC stubs)
-# ══════════════════════════════════════════════════════════════
-echo -e "${CYAN}[3/6] Starting Docker containers...${NC}"
-docker rm -f fcu_test_01 fcu_test_02 fcu_test_03 cc_test_01 cc_test_02 cc_test_03 2>/dev/null || true
-
+# ── Start honeydrone containers ──────────────────────────────
+echo -e "${CYAN}[3/5] Starting honeydrone fleet...${NC}"
+docker rm -f honeydrone_01 honeydrone_02 honeydrone_03 mirage_attacker 2>/dev/null || true
 for N in 1 2 3; do
-    docker run -d --name "fcu_test_0${N}" --network test_net --ip "172.40.0.2${N}" \
-        --memory 256m mirage-fcu-stub:latest > /dev/null
-done
-sleep 2
-for N in 1 2 3; do
-    docker run -d --name "cc_test_0${N}" --network test_net --ip "172.40.0.1${N}" \
-        --memory 256m -e "DRONE_ID=honey_0${N}" \
-        -e "ENGINE_HOST=${ENGINE_HOST}" -e "ENGINE_PORT=1455${N}" \
-        --add-host=host.docker.internal:host-gateway \
-        mirage-cc-stub:latest > /dev/null
+    docker run -d \
+        --name "honeydrone_0${N}" \
+        --network test_net \
+        --ip "172.40.0.1${N}" \
+        --memory 512m \
+        -e "DRONE_ID=honey_0${N}" \
+        -e "INDEX=${N}" \
+        -e "RESULTS_DIR=/results" \
+        -v "$(pwd)/results:/results:rw" \
+        mirage-honeydrone:latest > /dev/null
+    echo -e "  ${GREEN}honeydrone_0${N} @ 172.40.0.1${N}${NC}"
 done
 
-# Wait for healthy
-for i in $(seq 1 12); do
+# Wait healthy
+echo -e "  ${YELLOW}Waiting for health...${NC}"
+for attempt in $(seq 1 20); do
     H=0
     for N in 1 2 3; do
-        S=$(docker inspect --format='{{.State.Health.Status}}' "cc_test_0${N}" 2>/dev/null || echo "x")
+        S=$(docker inspect --format='{{.State.Health.Status}}' "honeydrone_0${N}" 2>/dev/null || echo "starting")
         [ "$S" = "healthy" ] && H=$((H+1))
     done
     [ "$H" -ge 3 ] && break
-    sleep 5
+    sleep 3
 done
-echo -e "  ${GREEN}$H/3 containers healthy${NC}"
+echo -e "  ${GREEN}${H}/3 healthy${NC}"
 
-# ══════════════════════════════════════════════════════════════
-# TERMINAL 5: Dashboard Server
-# ══════════════════════════════════════════════════════════════
-echo -e "${CYAN}[4/6] Starting dashboard server...${NC}"
-python3 results/dashboard/server.py > results/logs/dashboard.log 2>&1 &
-PIDS+=($!)
-sleep 2
-echo -e "  ${GREEN}Dashboard: http://localhost:8888${NC}"
-
-# ══════════════════════════════════════════════════════════════
-# TERMINAL 6: Live Packet Monitor (background tail)
-# ══════════════════════════════════════════════════════════════
+# ── Create tmux session ──────────────────────────────────────
+echo -e "${CYAN}[4/5] Creating tmux multi-view...${NC}"
+tmux kill-session -t "$SESSION" 2>/dev/null || true
 touch results/attacker_log.jsonl
-(
-    tail -f results/attacker_log.jsonl 2>/dev/null | python3 -u -c "
+
+# ── Shared log filter (used by all 3 drone panes) ────────────
+# Writes to a temp file so tmux can source it
+FILTER_SCRIPT=$(mktemp /tmp/mirage_filter_XXXX.py)
+cat > "$FILTER_SCRIPT" << 'PYEOF'
 import sys, json
-colors = {'0':'\033[90m','1':'\033[94m','2':'\033[93m','3':'\033[95m','4':'\033[91m'}
-reset = '\033[0m'
+# Colors
+R='\033[0m'; B='\033[1m'
+RED='\033[91m'; GRN='\033[92m'; YLW='\033[93m'; BLU='\033[94m'; MAG='\033[95m'; CYN='\033[96m'; DIM='\033[2m'
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    # Non-JSON lines (startup banner, aiohttp access logs)
+    try:
+        d = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        if 'MIRAGE' in line or '═' in line:
+            print(f'{GRN}{line}{R}', flush=True)
+        continue
+
+    ev = d.get('event', '')
+    drone = d.get('drone_id', '')
+
+    # ── DQN / MAB selection (most important) ──
+    if 'mab_action' in ev:
+        act = d.get('action', '?')
+        mode = d.get('mode', '?')
+        q = d.get('q_best', '')
+        q_str = f' Q={q}' if q else ''
+        print(f'{B}{MAG}[DQN] {act}{q_str} mode={mode} step={d.get("step","")}{R}', flush=True)
+
+    elif 'mab_reward' in ev:
+        print(f'{MAG}[REWARD] {d.get("action","?")} r={d.get("reward","")} avg={d.get("avg_reward","")}{R}', flush=True)
+
+    elif 'reward_computed' in ev:
+        print(f'{MAG}[R-DETAIL] Δbelief={d.get("delta_belief","")} pkts+{d.get("new_packets","")} → r={d.get("reward","")}{R}', flush=True)
+
+    # ── OODA cycle (per-packet) ──
+    elif ev == 'ooda_cycle':
+        tool = d.get('tool', '?')
+        phase = d.get('phase', '?')
+        src = d.get('response_source', '?')
+        p = d.get('p_real', 0)
+        msg = d.get('msg_type', '?')
+        cmds = d.get('cmds', 0)
+        # Only show every 5th to reduce noise, or all if tool changes
+        if cmds <= 3 or cmds % 5 == 0:
+            print(f'{DIM}[OODA] msg={msg} tool={tool} phase={phase} src={src} P(r)={p} cmds={cmds}{R}', flush=True)
+
+    elif ev == 'ooda_ws_cycle':
+        print(f'{CYN}[WS-OODA] tool={d.get("tool","")} phase={d.get("phase","")} resp={d.get("response_type","")}{R}', flush=True)
+
+    # ── Agent decisions ──
+    elif 'agent_decision' in ev:
+        beh = d.get('behavior', '')
+        rat = d.get('rationale', '')[:60]
+        print(f'{B}{YLW}[DECIDE] {beh}: {rat}{R}', flush=True)
+
+    # ── Tool / phase changes ──
+    elif 'tool_identified' in ev:
+        print(f'{B}{RED}[TOOL] {d.get("from_tool","")} → {d.get("to_tool","")} evidence={d.get("evidence","")}{R}', flush=True)
+
+    elif 'attack_phase' in ev:
+        print(f'{B}{RED}[PHASE] {d.get("old_phase","")} → {d.get("new_phase","")}{R}', flush=True)
+
+    # ── MTD triggers ──
+    elif 'mtd_trigger' in ev:
+        print(f'{CYN}[MTD] L={d.get("level","")} urg={d.get("urgency","")} #{d.get("count","")}{R}', flush=True)
+
+    # ── Belief state ──
+    elif 'belief' in ev and 'updated' in ev:
+        print(f'{BLU}[BELIEF] P(r)={d.get("p_real","")} ip={d.get("attacker_ip","")}{R}', flush=True)
+
+    # ── Proactive behaviors ──
+    elif 'proactive_' in ev or 'false_flag' in ev:
+        detail = ''
+        if 'statustext' in ev:
+            detail = d.get('message', '')
+        elif 'ghost' in ev:
+            detail = f'port={d.get("port","")}'
+        elif 'reboot' in ev:
+            detail = f'{d.get("silence_sec","?")}s silence' if 'start' in ev else f'sysid={d.get("new_sysid","")}'
+        elif 'fake_key' in ev:
+            detail = f'key={d.get("key_preview","")}'
+        elif 'false_flag' in ev:
+            detail = f'sysid {d.get("original_sysid","→")}{d.get("fake_sysid","")}'
+        print(f'{YLW}[PROACTIVE] {ev} {detail}{R}', flush=True)
+
+    # ── Startup ──
+    elif 'started' in ev or 'initialized' in ev or 'loaded' in ev:
+        mode = d.get('policy_mode', d.get('mode', ''))
+        extra = f' [{mode}]' if mode else ''
+        print(f'{GRN}[INIT] {ev}{extra}{R}', flush=True)
+
+    # ── Session events ──
+    elif 'session' in ev or 'connect' in ev:
+        print(f'{DIM}[CONN] {ev} ip={d.get("attacker_ip",d.get("src_ip",""))}{R}', flush=True)
+
+    # ── Metrics save ──
+    elif 'metrics_saved' in ev:
+        print(f'{DIM}[SAVE] mtd={d.get("mtd","")} cti={d.get("cti","")} dec={d.get("decisions","")} conf={d.get("confusion","")}{R}', flush=True)
+PYEOF
+
+# Create session with first pane (honeydrone_01 logs)
+tmux new-session -d -s "$SESSION" -n "MIRAGE" \
+    "echo '═══ HONEYDRONE 01 — OpenClaw DQN ═══'; docker logs -f honeydrone_01 2>&1 | python3 -u '$FILTER_SCRIPT'; exec bash"
+
+# Pane 1: honeydrone_02
+tmux split-window -h -t "$SESSION" \
+    "echo '═══ HONEYDRONE 02 — OpenClaw DQN ═══'; docker logs -f honeydrone_02 2>&1 | python3 -u '$FILTER_SCRIPT'; exec bash"
+
+# Pane 2: honeydrone_03
+tmux split-window -h -t "$SESSION" \
+    "echo '═══ HONEYDRONE 03 — OpenClaw DQN ═══'; docker logs -f honeydrone_03 2>&1 | python3 -u '$FILTER_SCRIPT'; exec bash"
+
+# Pane 3: Attacker (bottom-left)
+tmux split-window -v -t "$SESSION:0.0" \
+    "echo '═══ ATTACKER L0→L4 (${LEVEL_DURATION}s/level = ${TOTAL_MIN}min) ═══'; echo 'Starting in 3s...'; sleep 3; \
+docker run --rm --name mirage_attacker --network test_net --ip 172.40.0.200 \
+    -e ATTACKER_LEVEL_DURATION_SEC=${LEVEL_DURATION} \
+    -e 'HONEY_DRONE_TARGETS=172.40.0.11:14550,172.40.0.12:14550,172.40.0.13:14550' \
+    -e WEBCLAW_PORT_BASE=18789 -e HTTP_PORT_BASE=79 -e RESULTS_DIR=/results \
+    -v '${PROJECT}/results:/results:rw' \
+    mirage-attacker:latest 2>&1; \
+echo ''; echo '═══ ATTACK COMPLETE ═══'; \
+echo 'Computing metrics...'; \
+cd '${PROJECT}'; \
+python3 -c \"
+import sys; sys.path.insert(0,'src')
+from dotenv import load_dotenv; load_dotenv('config/.env')
+from evaluation.compute_all import compute_all_metrics
+r = compute_all_metrics('results/attacker_log.jsonl','results')
+print(f'  Sessions: {r[\\\"total_sessions\\\"]}')
+print(f'  DS={r[\\\"deception_score\\\"]:.4f} CS={r[\\\"avg_confusion_score\\\"]:.4f}')
+print(f'  MTD={r[\\\"total_mtd_actions\\\"]} TTPs={r[\\\"unique_ttps\\\"]}')
+\"; \
+python3 -c \"
+import sys; sys.path.insert(0,'src')
+from dotenv import load_dotenv; load_dotenv('config/.env')
+from omnetpp.trace_exporter import main; main()
+\" 2>/dev/null; \
+echo 'Done. Press Enter to exit.'; read; exec bash"
+
+# Pane 4: Live packet monitor (bottom-center)
+tmux split-window -h -t "$SESSION:0.3" \
+    "echo '═══ LIVE PACKET FEED ═══'; \
+tail -f '${PROJECT}/results/attacker_log.jsonl' 2>/dev/null | python3 -u -c \"
+import sys,json
+colors = {'0':'\\033[90m','1':'\\033[94m','2':'\\033[93m','3':'\\033[95m','4':'\\033[91m'}
+R='\\033[0m'
+counts = {0:0,1:0,2:0,3:0,4:0}
 for line in sys.stdin:
     try:
         r = json.loads(line)
         lv = r.get('level',-1)
         if lv < 0: continue
-        c = colors.get(str(lv), '')
+        counts[lv] = counts.get(lv,0)+1
+        c = colors.get(str(lv),'')
         ok = 'timeout' not in r.get('action','') and 'fail' not in r.get('action','')
-        mark = '✓' if ok else '✗'
-        resp = r.get('response_preview','')[:30]
-        print(f'{c}L{lv} {r[\"action\"]:30s} {mark} {resp}{reset}', flush=True)
+        mark = '++' if ok else 'XX'
+        resp = r.get('response_preview','')[:25]
+        act = r.get('action','')[:28]
+        total = sum(counts.values())
+        print(f'{c}L{lv} [{counts[lv]:3d}] {act:28s} {mark} {resp}{R}  (total={total})',flush=True)
     except: pass
-" > results/logs/packets.log 2>&1
-) &
-PIDS+=($!)
+\"; exec bash"
 
-# ══════════════════════════════════════════════════════════════
-# NOW SHOW THE MULTI-VIEW
-# ══════════════════════════════════════════════════════════════
-echo ""
-echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  ALL COMPONENTS RUNNING — Multi-View Active${NC}"
-echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
-echo ""
-echo -e "  ${CYAN}[Engine]${NC}    tail -f results/logs/engines.log"
-echo -e "  ${CYAN}[Dashboard]${NC} http://localhost:8888 (open in browser)"
-echo -e "  ${CYAN}[Packets]${NC}   tail -f results/logs/packets.log"
-echo ""
-echo -e "  ${YELLOW}Starting attacker in 3 seconds...${NC}"
-sleep 3
-
-# ══════════════════════════════════════════════════════════════
-# TERMINAL 3: Attacker Simulator (foreground — you see this)
-# ══════════════════════════════════════════════════════════════
-echo -e "${CYAN}[5/6] Running attacker L0→L4...${NC}"
-echo ""
-
-# Run attacker in foreground so you see it live
-docker run --rm --name mirage_attacker --network test_net --ip 172.40.0.200 \
-    -e ATTACKER_LEVEL_DURATION_SEC=30 \
-    -e "HONEY_DRONE_TARGETS=172.40.0.10:14550,172.40.0.11:14550,172.40.0.12:14550" \
-    -e WEBCLAW_PORT_BASE=18789 -e HTTP_PORT_BASE=79 -e RESULTS_DIR=/results \
-    -v "$(pwd)/results:/results:rw" \
-    mirage-attacker:latest 2>&1 || true
-
-# ══════════════════════════════════════════════════════════════
-# TERMINAL 4: Post-experiment analysis
-# ══════════════════════════════════════════════════════════════
-echo ""
-echo -e "${CYAN}[6/6] Computing final results...${NC}"
-
-# Compute metrics
-python3 -c "
-import json, time, sys
-sys.path.insert(0, 'src')
+# Pane 5: Metrics live monitor (bottom-right)
+tmux split-window -h -t "$SESSION:0.4" \
+    "echo '═══ LIVE METRICS + BELIEF STATE ═══'; \
+while true; do \
+    clear; \
+    echo '═══ LIVE METRICS ═══'; \
+    echo ''; \
+    if [ -f '${PROJECT}/results/metrics/confusion_honey_01.json' ]; then \
+        python3 -c \"
+import json
 from pathlib import Path
+m = Path('${PROJECT}/results/metrics')
 
-records = []
-if Path('results/attacker_log.jsonl').exists():
-    with open('results/attacker_log.jsonl') as f:
-        for line in f:
-            records.append(json.loads(line.strip()))
+# Confusion / Belief
+print('--- Belief State (P_real) ---')
+for i in range(1,4):
+    f = m / f'confusion_honey_0{i}.json'
+    if f.exists():
+        d = json.loads(f.read_text())
+        avg = d.get('avg_confusion_score',0)
+        beliefs = d.get('per_engine',[{}])[0].get('beliefs',[])
+        obs = beliefs[0].get('total_observations',0) if beliefs else 0
+        tgt = beliefs[0].get('belief_target','?') if beliefs else '?'
+        print(f'  honey_0{i}: P(real)={avg:.4f}  obs={obs}  belief={tgt}')
 
-total = sum(1 for r in records if r['level'] >= 0)
-ok = sum(1 for r in records if r['level'] >= 0 and 'timeout' not in r['action'] and 'fail' not in r['action'])
-eff = ok / max(total, 1)
-bc_plant = sum(1 for r in records if r['level']>=0 and 'http_get' in r.get('action','') and r.get('response_preview',''))
-bc_follow = sum(1 for r in records if r['level']>=0 and ('breadcrumb' in r.get('action','') or 'lure' in r.get('action','') or 'config' in r.get('action','')))
-ghost = sum(1 for r in records if r['level']>=0 and 'ghost' in r.get('action',''))
-live_mtd_count = 0
-if Path('results/metrics/live_mtd_results.json').exists():
-    live_mtd_count = len(json.loads(Path('results/metrics/live_mtd_results.json').read_text()))
+# MTD
+print('')
+print('--- MTD Results ---')
+mtd_f = m / 'live_mtd_results.json'
+if mtd_f.exists():
+    mtd = json.loads(mtd_f.read_text())
+    from collections import Counter
+    types = Counter(d.get('action_type','?') for d in mtd)
+    for t,c in types.most_common():
+        print(f'  {t}: {c}')
+    print(f'  Total: {len(mtd)}')
 
-ds = 0.30*eff + 0.25*eff + 0.20*0.72 + 0.15*min(bc_follow/max(bc_plant,1),1.0) + 0.10*min(ghost/max(total,1),1.0)
-engine_mode = 'real_openclaw' if Path('results/.engine_running').exists() else 'stub'
+# Agent decisions
+print('')
+print('--- Agent Decisions ---')
+total_dec = 0
+from collections import Counter
+all_beh = Counter()
+for i in range(1,4):
+    f = m / f'decisions_honey_0{i}.json'
+    if f.exists():
+        decs = json.loads(f.read_text())
+        total_dec += len(decs)
+        for d in decs:
+            all_beh[d.get('behavior_triggered',d.get('behavior','?'))] += 1
+for b,c in all_beh.most_common(8):
+    print(f'  {b}: {c}')
+print(f'  Total: {total_dec}')
 
-# Per-level breakdown
-by_level = {}
-names = {0:'L0',1:'L1',2:'L2',3:'L3',4:'L4'}
-for r in records:
-    lv = r['level']
-    if lv < 0: continue
-    by_level.setdefault(lv, {'n':0,'ok':0})
-    by_level[lv]['n'] += 1
-    if 'timeout' not in r['action'] and 'fail' not in r['action']:
-        by_level[lv]['ok'] += 1
+# CTI
+print('')
+print('--- CTI Events ---')
+all_ttps = set()
+total_cti = 0
+for i in range(1,4):
+    f = m / f'cti_honey_0{i}.json'
+    if f.exists():
+        d = json.loads(f.read_text())
+        total_cti += d.get('total_events',0)
+        all_ttps.update(d.get('unique_ttps',[]))
+print(f'  Events: {total_cti}  TTPs: {sorted(all_ttps)}')
 
-print()
-print('  ┌─────────────────────────────────────────────────┐')
-print('  │         MIRAGE-UAS Experiment Results            │')
-print('  ├─────────────────────────────────────────────────┤')
-print(f'  │ Engine Mode:      {engine_mode:>28s} │')
-print(f'  │ DeceptionScore:   {ds:>28.4f} │')
-print(f'  │ Total Sessions:   {total:>28d} │')
-print(f'  │ Successful:       {ok:>24d} ({eff:.0%}) │')
-print(f'  │ MTD Triggers:     {live_mtd_count:>28d} │')
-print(f'  │ Breadcrumbs:      {bc_plant:>16d} planted → {bc_follow:>3d} followed │')
-print(f'  │ Ghost Hits:       {ghost:>28d} │')
-print('  ├─────────────────────────────────────────────────┤')
-for lv in sorted(by_level):
-    s = by_level[lv]
-    pct = s['ok']*100//max(s['n'],1)
-    bar = '█' * (pct//5) + '░' * (20 - pct//5)
-    print(f'  │ {names[lv]}: {bar} {pct:>3d}% ({s[\"ok\"]}/{s[\"n\"]}) │')
-print('  └─────────────────────────────────────────────────┘')
-" 2>/dev/null || true
+# Attacker log stats
+print('')
+print('--- Attacker Log ---')
+log = Path('${PROJECT}/results/attacker_log.jsonl')
+if log.exists():
+    lines = log.read_text().strip().split('\\n')
+    valid = 0; fails = 0
+    for l in lines:
+        try:
+            r = json.loads(l)
+            lv = r.get('level',-1)
+            if lv < 0: continue
+            valid += 1
+            if 'fail' in r.get('action','') or 'timeout' in r.get('action',''):
+                fails += 1
+        except: pass
+    print(f'  Records: {valid}  Fails: {fails} ({fails*100//max(valid,1)}%)')
+\" 2>/dev/null; \
+    else \
+        echo 'Waiting for data...'; \
+    fi; \
+    sleep 5; \
+done; exec bash"
 
-# Show engine decisions
-echo ""
-echo -e "${CYAN}  OpenClaw Agent Decisions (last 15):${NC}"
-tail -100 results/logs/engines.log 2>/dev/null | python3 -c "
-import sys, json
-for line in sys.stdin:
-    try:
-        r = json.loads(line)
-        ev = r.get('event','')
-        if 'decision' in ev or 'phase' in ev or 'MTD' in ev or 'trigger' in ev or 'started' in ev:
-            print(f'    {ev}: {r.get(\"drone_id\",\"\")} {r.get(\"behavior\",\"\")} {r.get(\"attacker_ip\",\"\")} {r.get(\"old_phase\",\"\")}→{r.get(\"new_phase\",\"\")}')
-    except: pass
-" 2>/dev/null | tail -15 || echo "    (no decisions logged)"
+# ── Layout ───────────────────────────────────────────────────
+tmux select-layout -t "$SESSION" tiled 2>/dev/null || true
 
+# ── Attach ───────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  Dashboard still running: ${CYAN}http://localhost:8888${NC}"
+echo -e "${GREEN}  MIRAGE-UAS Multi-View Ready${NC}"
+echo -e "${GREEN}  ${TOTAL_MIN}min experiment (${LEVEL_DURATION}s × 5 levels)${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
-echo "  To watch live logs in other terminals:"
+echo -e "  Pane 0-2: Honeydrone 01/02/03 OODA decisions"
+echo -e "  Pane 3:   Attacker L0→L4"
+echo -e "  Pane 4:   Live packet feed"
+echo -e "  Pane 5:   Metrics + Belief + MTD"
 echo ""
-echo -e "    ${CYAN}# Terminal 2 — OpenClaw Agent decisions:${NC}"
-echo "    tail -f results/logs/engines.log | python3 -c \""
-echo "    import sys,json"
-echo "    for l in sys.stdin:"
-echo "      try:"
-echo "        r=json.loads(l);e=r.get('event','')"
-echo "        if any(k in e for k in ['phase','decision','trigger','started']):"
-echo "          print(f'  {e}: {r.get(\\\"drone_id\\\",\\\"\\\")} {r.get(\\\"behavior\\\",\\\"\\\")}')"
-echo "      except: pass\""
-echo ""
-echo -e "    ${CYAN}# Terminal 3 — Live packet feed:${NC}"
-echo "    tail -f results/attacker_log.jsonl | python3 -c \""
-echo "    import sys,json"
-echo "    for l in sys.stdin:"
-echo "      try:"
-echo "        r=json.loads(l);lv=r.get('level',-1)"
-echo "        if lv>=0: print(f'L{lv} {r[\\\"action\\\"]:30s} {r.get(\\\"response_preview\\\",\\\"\\\")[:40]}')"
-echo "      except: pass\""
-echo ""
-echo "  Press Ctrl+C to stop everything."
+echo -e "  ${CYAN}Ctrl+B then arrow keys to navigate panes${NC}"
+echo -e "  ${CYAN}Ctrl+B then D to detach (experiment continues)${NC}"
 echo ""
 
-# Keep dashboard running until Ctrl+C
-wait
+tmux attach -t "$SESSION"

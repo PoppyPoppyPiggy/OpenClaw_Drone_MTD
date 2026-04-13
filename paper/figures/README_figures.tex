@@ -1,0 +1,24 @@
+% ═══════════════════════════════════════════════════════════════
+% MIRAGE-UAS Paper Figures — Overleaf Setup Guide
+%
+% Required preamble (add to main.tex before \begin{document}):
+% ═══════════════════════════════════════════════════════════════
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes, calc, fit, backgrounds}
+
+% Helper command used in attack model figure
+\newcommand{\romark}[1]{\texttt{#1}}
+
+% ═══════════════════════════════════════════════════════════════
+% Usage in paper body:
+%
+%   \input{figures/fig_ooda_loop}      % Figure: OODA Loop
+%   \input{figures/fig_attack_model}   % Figure: L0-L4 Attack Model
+%   \input{figures/fig_defense_arch}   % Figure: Defense Architecture
+%
+% Notes:
+%   - fig_ooda_loop:    \begin{figure}[t]   (single column)
+%   - fig_attack_model: \begin{figure}[t]   (single column)
+%   - fig_defense_arch: \begin{figure*}[t]  (double column, full width)
+% ═══════════════════════════════════════════════════════════════

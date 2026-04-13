@@ -1,3 +1,0 @@
-# Dockerfile.stub-sim — Stub DVD Simulator (lite) for testing
-FROM python:3.11-slim
-CMD ["python", "-c", "import time; print('Stub simulator (lite) running'); [time.sleep(3600) for _ in iter(int, 1)]"]

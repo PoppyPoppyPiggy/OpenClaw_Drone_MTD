@@ -1,0 +1,133 @@
+% ═══════════════════════════════════════════════════════════════
+% Figure: L0-L4 Adaptive Attack Model with Intelligence Chaining
+% Usage: \input{figures/fig_attack_model.tex}
+% ═══════════════════════════════════════════════════════════════
+\begin{figure}[t]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+    >=stealth,
+    level/.style={
+        rectangle, rounded corners=6pt, draw=#1!70, fill=#1!10,
+        line width=1pt, minimum width=3.0cm, minimum height=1.2cm,
+        align=center, font=\sffamily\bfseries\small
+    },
+    intel/.style={
+        rectangle, rounded corners=3pt, draw=black!40, fill=yellow!8,
+        font=\sffamily\scriptsize, align=left, text width=3.5cm,
+        inner sep=3pt
+    },
+    tool/.style={
+        ellipse, draw=gray!60, fill=gray!8,
+        font=\sffamily\tiny, inner sep=2pt, align=center
+    },
+    chain/.style={->, line width=1.8pt, draw=black!60},
+    intflow/.style={->, line width=0.8pt, draw=orange!60, dashed},
+    ttp/.style={
+        rectangle, rounded corners=2pt, draw=teal!50, fill=teal!5,
+        font=\ttfamily\tiny, inner sep=2pt
+    },
+]
+
+% ── Level nodes (vertical cascade) ───────────────────────────
+\node[level=gray]    (L0) at (0, 8)   {L0\\[-2pt]{\footnotesize Script Kiddie}};
+\node[level=blue]    (L1) at (0, 6)   {L1\\[-2pt]{\footnotesize Basic}};
+\node[level=yellow]  (L2) at (0, 4)   {L2\\[-2pt]{\footnotesize Intermediate}};
+\node[level=purple]  (L3) at (0, 2)   {L3\\[-2pt]{\footnotesize Advanced}};
+\node[level=red]     (L4) at (0, 0)   {L4\\[-2pt]{\footnotesize APT}};
+
+% ── Cascade arrows ───────────────────────────────────────────
+\draw[chain] (L0) -- (L1);
+\draw[chain] (L1) -- (L2);
+\draw[chain] (L2) -- (L3);
+\draw[chain] (L3) -- (L4);
+
+% ── Skill parameter (s) ─────────────────────────────────────
+\node[font=\sffamily\tiny\bfseries, text=gray!60] at (-1.9, 8) {$s=0.20$};
+\node[font=\sffamily\tiny\bfseries, text=blue!60] at (-1.9, 6) {$s=0.35$};
+\node[font=\sffamily\tiny\bfseries, text=yellow!70!black] at (-1.9, 4) {$s=0.55$};
+\node[font=\sffamily\tiny\bfseries, text=purple!60] at (-1.9, 2) {$s=0.75$};
+\node[font=\sffamily\tiny\bfseries, text=red!60] at (-1.9, 0) {$s=1.00$};
+
+% ── Attack actions (right side) ──────────────────────────────
+\node[intel] (A0) at (4.5, 8) {
+    \textbullet\ TCP SYN scan (20 ports)\\
+    \textbullet\ UDP MAVLink probe\\
+    \textbullet\ Banner grabbing
+};
+\node[intel] (A1) at (4.5, 6) {
+    \textbullet\ HEARTBEAT $\to$ sysid 추출\\
+    \textbullet\ PARAM\_REQUEST\_LIST\\
+    \textbullet\ ARM/TAKEOFF 명령 주입\\
+    \textbullet\ GPS spoof 시도
+};
+\node[intel] (A2) at (4.5, 4) {
+    \textbullet\ HTTP API 열거\\
+    \textbullet\ 브루트포스 로그인\\
+    \textbullet\ 크레덴셜 재사용\\
+    \textbullet\ 미션 데이터 추출
+};
+\node[intel] (A3) at (4.5, 2) {
+    \textbullet\ CVE-2026-25253 exploit\\
+    \textbullet\ RTSP DoS\\
+    \textbullet\ 브레드크럼 체인 추적\\
+    \textbullet\ WS skill\_invoke
+};
+\node[intel] (A4) at (4.5, 0) {
+    \textbullet\ SSH lateral movement\\
+    \textbullet\ Cross-drone cred reuse\\
+    \textbullet\ 펌웨어 업로드\\
+    \textbullet\ C2 persistence
+};
+
+\draw[->, gray!40] (L0.east) -- (A0.west);
+\draw[->, gray!40] (L1.east) -- (A1.west);
+\draw[->, gray!40] (L2.east) -- (A2.west);
+\draw[->, gray!40] (L3.east) -- (A3.west);
+\draw[->, gray!40] (L4.east) -- (A4.west);
+
+% ── Intelligence harvest (far right) ────────────────────────
+\node[ttp] (I0) at (9.0, 8) {open\_ports, banners};
+\node[ttp] (I1) at (9.0, 6) {sysid, params, arm\_ok};
+\node[ttp] (I2) at (9.0, 4) {api\_token, ssh\_pw, signing\_key};
+\node[ttp] (I3) at (9.0, 2) {ws\_token, permissions};
+
+\draw[->, gray!30] (A0.east) -- node[above, font=\tiny\sffamily, text=orange!70] {harvest} (I0.west);
+\draw[->, gray!30] (A1.east) -- node[above, font=\tiny\sffamily, text=orange!70] {harvest} (I1.west);
+\draw[->, gray!30] (A2.east) -- node[above, font=\tiny\sffamily, text=orange!70] {harvest} (I2.west);
+\draw[->, gray!30] (A3.east) -- node[above, font=\tiny\sffamily, text=orange!70] {harvest} (I3.west);
+
+% ── Intel chaining arrows (diagonal) ────────────────────────
+\draw[intflow] (I0.south) -- (A1.east);
+\draw[intflow] (I1.south) -- (A2.east);
+\draw[intflow] (I2.south) -- (A3.east);
+\draw[intflow] (I3.south) -- (A4.east);
+
+% ── Intel chain label ────────────────────────────────────────
+\node[rotate=-90, font=\sffamily\tiny\bfseries, text=orange!60] at (10.3, 4) {Intelligence Chaining};
+
+% ── ATT\&CK TTPs (left side) ────────────────────────────────
+\node[ttp] at (-3.2, 8) {T0846 Remote Svc};
+\node[ttp] at (-3.2, 6) {T0836 Modify Param};
+\node[ttp] at (-3.2, 4) {T0812 Default Cred};
+\node[ttp] at (-3.2, 2) {T0821 Modify Task};
+\node[ttp] at (-3.2, 0) {T0839 Module FW};
+
+\draw[->, teal!30] (-2.0, 8) -- (L0.west);
+\draw[->, teal!30] (-2.0, 6) -- (L1.west);
+\draw[->, teal!30] (-2.0, 4) -- (L2.west);
+\draw[->, teal!30] (-2.0, 2) -- (L3.west);
+\draw[->, teal!30] (-2.0, 0) -- (L4.west);
+
+% ── Protocol labels ──────────────────────────────────────────
+\node[font=\sffamily\tiny, fill=white, draw=gray!30, rounded corners=2pt, inner sep=1.5pt] at (2.2, 8) {TCP/UDP};
+\node[font=\sffamily\tiny, fill=white, draw=blue!30, rounded corners=2pt, inner sep=1.5pt] at (2.2, 6) {MAVLink};
+\node[font=\sffamily\tiny, fill=white, draw=yellow!50, rounded corners=2pt, inner sep=1.5pt] at (2.2, 4) {HTTP};
+\node[font=\sffamily\tiny, fill=white, draw=purple!30, rounded corners=2pt, inner sep=1.5pt] at (2.2, 2) {WebSocket};
+\node[font=\sffamily\tiny, fill=white, draw=red!30, rounded corners=2pt, inner sep=1.5pt] at (2.2, 0) {SSH/Multi};
+
+\end{tikzpicture}
+}
+\caption{L0--L4 적응형 공격 모델. 각 레벨은 이전 레벨에서 수확한 인텔리전스를 체이닝하여 다음 레벨의 공격에 활용한다. 오른쪽 점선은 인텔리전스 흐름(Intelligence Chaining)을, 왼쪽은 MITRE ATT\&CK for ICS TTP 매핑을 나타낸다.}
+\label{fig:attack}
+\end{figure}

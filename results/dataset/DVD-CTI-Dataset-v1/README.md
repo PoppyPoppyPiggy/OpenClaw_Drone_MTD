@@ -9,9 +9,9 @@
 
 | Category | Count |
 |----------|-------|
-| Total samples | 1012 |
-| Positive (attack) | 405 |
-| Negative (benign) | 607 |
+| Total samples | 492 |
+| Positive (attack) | 197 |
+| Negative (benign) | 295 |
 
 ## Schema
 

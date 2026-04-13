@@ -47,6 +47,7 @@ from typing import Any
 from shared.constants import RESULTS_DIR
 from shared.logger import get_logger
 from shared.models import AgentDecision, AttackerLevel, DatasetEntry, EngagementMetrics
+from evaluation.mtd_metrics import compute_mtd_effectiveness
 
 logger = get_logger(__name__)
 
@@ -249,8 +250,24 @@ class MetricsCollector:
             ))
 
         rows.sort(key=lambda r: r.avg_ms)
-        self._save("table_iii_mtd_latency.json", [_as_dict(r) for r in rows])
-        logger.info("table_iii_collected", action_types=len(rows))
+
+        # Compute and attach MTD effectiveness (TTC/SRRP/Entropy)
+        import os
+        mtd_eff = compute_mtd_effectiveness(
+            mtd_period_days=float(os.environ.get("MTD_SHUFFLE_PERIOD_DAYS", "1.0")),
+            port_pool_size=int(os.environ.get("MTD_PORT_POOL_SIZE", "100")),
+            ip_pool_size=int(os.environ.get("MTD_IP_POOL_SIZE", "256")),
+            protocol_variants=3,
+        )
+        row_dicts = [_as_dict(r) for r in rows]
+        for rd in row_dicts:
+            rd["srrp_pct"] = mtd_eff["srrp_pct"]
+            rd["entropy_bits"] = mtd_eff["entropy_bits"]
+
+        self._save("table_iii_mtd_latency.json", row_dicts)
+        self._save("mtd_effectiveness.json", mtd_eff)
+        logger.info("table_iii_collected", action_types=len(rows),
+                     srrp_pct=mtd_eff["srrp_pct"], entropy_bits=mtd_eff["entropy_bits"])
         return rows
 
     def collect_dataset_stats(

@@ -193,8 +193,8 @@ def render_sequence():
     # DS result
     ax.add_patch(mpatches.FancyBboxPatch((5, 1), 6, 1.5, boxstyle="round,pad=0.1",
                                           facecolor="#112211", edgecolor=C["eval"], linewidth=2))
-    ax.text(8, 2.1, "DeceptionScore = 0.714", ha="center", fontsize=11, color=C["eval"], fontweight="bold")
-    ax.text(8, 1.6, "0.30×0.75 + 0.25×1.0 + 0.20×0.72 + 0.15×1.0 + 0.10×0.03",
+    ax.text(8, 2.1, "DeceptionScore = w1·eff + w2·bp + w3·confusion + w4·bc + w5·ghost", ha="center", fontsize=11, color=C["eval"], fontweight="bold")
+    ax.text(8, 1.6, "confusion = Accuracy×w + Temptation×w + CloakingRate×w (real_measurement)",
             ha="center", fontsize=7, color=C["txt"])
     ax.text(8, 1.2, "engine_mode: real_openclaw | 0 breaches | 46 MTD triggers",
             ha="center", fontsize=6, color="#8b949e")

@@ -117,6 +117,93 @@ class IntelStore:
 _intel = IntelStore()
 
 
+# ── HoneyGPT Deception Counters (per-level session metrics) ─────────────────
+# SALC:  attack succeeded + logically correct response (honeypot fooled attacker)
+# SALNLC: attack succeeded + logically incorrect response (bad honeypot fidelity)
+# FALC:  attack failed + logically correct response (attacker lured deeper)
+# evasion: fingerprinting / timing probes that indicate honeypot detection attempt
+
+class _DeceptionCounters:
+    """Track HoneyGPT-style deception metrics across the campaign."""
+
+    def __init__(self) -> None:
+        self.salc: int = 0
+        self.salnlc: int = 0
+        self.falc: int = 0
+        self.evasion_cmds: int = 0
+        self.total_cmds: int = 0
+
+    def classify(self, action: str, response: str, duration_ms: float) -> None:
+        """Classify each logged interaction into SALC/SALNLC/FALC/evasion."""
+        # Skip meta-actions (summaries, campaign_complete)
+        if action in ("recon_summary", "intel_summary", "campaign_complete"):
+            return
+
+        self.total_cmds += 1
+
+        # Evasion-class commands: unusual probing, timing analysis, null-byte
+        _evasion_patterns = (
+            "null_byte", "timing_probe", "fingerprint", "version_check",
+            "unusual_probe", "scan_closed", "probe_timeout",
+        )
+        if any(p in action for p in _evasion_patterns):
+            self.evasion_cmds += 1
+
+        # Classify by action outcome
+        got_response = bool(response) and duration_ms > 0
+        is_timeout = "timeout" in action or "fail" in action or "closed" in action
+
+        # Actions indicating command accepted (valid response + success)
+        _accepted_patterns = (
+            "accepted", "login_success", "auth_bypass", "ssh_login",
+            "gps_spoof", "fence_disabled", "file_transfer", "credential_reuse",
+            "lateral_ssh", "lateral_api", "ghost_auth",
+        )
+        # Actions indicating valid response but command rejected/blocked
+        _rejected_valid_patterns = (
+            "scan_open", "mavlink_probe", "http_get_", "ws_connect",
+            "rtsp_options", "breadcrumb_follow", "ghost_probe",
+            "authenticated_request", "follow_endpoint",
+        )
+
+        if is_timeout:
+            # No response — doesn't count for HoneyGPT metrics
+            pass
+        elif any(p in action for p in _accepted_patterns):
+            if got_response:
+                self.salc += 1      # Succeeded + valid response
+            else:
+                self.salnlc += 1    # Succeeded but response was invalid
+        elif any(p in action for p in _rejected_valid_patterns):
+            if got_response:
+                self.falc += 1      # Valid response but command didn't achieve goal
+        elif got_response:
+            # Other actions with a response — default to SALC
+            self.salc += 1
+        else:
+            self.salnlc += 1
+
+    @property
+    def honeypot_detected(self) -> bool:
+        """True if attacker issued >15% evasion-class commands."""
+        if self.total_cmds == 0:
+            return False
+        return self.evasion_cmds > (self.total_cmds * 0.15)
+
+    def to_dict(self) -> dict:
+        return {
+            "salc": self.salc,
+            "salnlc": self.salnlc,
+            "falc": self.falc,
+            "evasion_cmds": self.evasion_cmds,
+            "total_cmds": self.total_cmds,
+            "honeypot_detected": self.honeypot_detected,
+        }
+
+
+_counters = _DeceptionCounters()
+
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 
 def _log(level: int, action: str, target: str, response: str,
@@ -133,6 +220,11 @@ def _log(level: int, action: str, target: str, response: str,
         record["mitre_ttp"] = ttp
     if intel_gained:
         record["intel_gained"] = intel_gained
+
+    # Classify for HoneyGPT deception metrics
+    if level >= 0:
+        _counters.classify(action, response, duration_ms)
+
     _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(_LOG_PATH, "a") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -1257,7 +1349,21 @@ async def main() -> None:
         "intel_summary": _intel.summary(),
         "levels_executed": 5,
         "targets_count": len(_TARGETS),
+        **_counters.to_dict(),
     }), 0)
+
+    # Write session-level deception metrics for downstream confusion_score computation
+    session_record = {
+        "timestamp": time.time(),
+        "level": -2,
+        "action": "deception_session_metrics",
+        "target": "session",
+        "response_preview": "",
+        "duration_ms": 0,
+        **_counters.to_dict(),
+    }
+    with open(_LOG_PATH, "a") as f:
+        f.write(json.dumps(session_record, ensure_ascii=False) + "\n")
 
 
 if __name__ == "__main__":

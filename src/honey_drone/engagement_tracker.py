@@ -311,6 +311,17 @@ class EngagementTracker:
             if did == drone_id
         ]
 
+    def get_active_attacker_addrs(self, drone_id: str) -> list[tuple[str, int]]:
+        """
+        [ROLE] 특정 드론의 활성 공격자 (ip, port) 주소 목록 반환.
+               OpenClawAgent 자율 행동에서 패킷 전송 시 사용.
+        """
+        return [
+            (s.attacker_ip, s.attacker_port)
+            for (ip, did), s in self._sessions.items()
+            if did == drone_id
+        ]
+
     # ── 내부 헬퍼 ──────────────────────────────────────────────────────────────
 
     def _detect_exploits(

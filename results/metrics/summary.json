@@ -1,18 +1,81 @@
 {
-  "experiment_id": "full-integrated",
+  "experiment_id": "mirage-consolidated",
   "engine_mode": "real_openclaw",
-  "duration_sec": 180,
+  "duration_sec": 180.0,
   "honey_drone_count": 3,
-  "total_sessions": 192,
-  "successful_engagements": 131,
-  "engagement_rate": 0.6823,
-  "total_mtd_actions": 24,
-  "deception_score": 0.723,
-  "avg_confusion_score": 0.9729,
-  "confusion_source": "real_bayesian",
-  "breadcrumbs_planted": 30,
-  "breadcrumbs_followed": 31,
-  "ghost_connections": 6,
-  "dataset_size": 192,
-  "unique_ttps": 1
+  "total_sessions": 161,
+  "successful_engagements": 94,
+  "engagement_rate": 0.5839,
+  "deception_score": 0.5252,
+  "deception_success": 0.5839,
+  "avg_confusion_score": 0.5,
+  "confusion_source": "neutral_fallback",
+  "total_mtd_actions": 9,
+  "breadcrumbs_planted": 0,
+  "breadcrumbs_followed": 0,
+  "ghost_connections": 0,
+  "dataset_size": 161,
+  "unique_ttps": 1,
+  "mtd_effectiveness": {
+    "ttc_by_level_no_mtd": {
+      "L0_SCRIPT_KIDDIE": 74.19,
+      "L1_BASIC": 13.48,
+      "L2_INTERMEDIATE": 9.63,
+      "L3_ADVANCED": 10.87,
+      "L4_APT": 8.69
+    },
+    "ttc_by_level_with_mtd": {
+      "L0_SCRIPT_KIDDIE": 142.69,
+      "L1_BASIC": 77.5,
+      "L2_INTERMEDIATE": 45.9,
+      "L3_ADVANCED": 31.15,
+      "L4_APT": 21.01
+    },
+    "mttc_no_mtd_days": 23.37,
+    "mttc_with_mtd_days": 63.65,
+    "srrp_pct": 63.3,
+    "entropy_bits": 16.23,
+    "entropy_max_bits": 16.23,
+    "entropy_utilization": 1.0,
+    "mtd_period_days": 1.0,
+    "config_space": {
+      "port_pool": 100,
+      "ip_pool": 256,
+      "protocol_variants": 3
+    },
+    "citations": {
+      "ttc_srrp": "Sharma (2025), Electronics 14(11):2205",
+      "entropy": "Zhuang et al. (2014), ACM MTD + Janani (2025), arXiv:2504.11661"
+    }
+  },
+  "cti_quality": {
+    "ttp_coverage": {
+      "detected_ttp_count": 1,
+      "attck_ics_total": 83,
+      "coverage_rate": 0.012,
+      "coverage_of_mapped": 0.0476,
+      "mapped_in_mirage": 21,
+      "detected_list": [
+        "T0842"
+      ],
+      "citation": "MITRE ATT&CK for ICS v14 (2023), https://attack.mitre.org/matrices/ics/"
+    },
+    "stix_completeness": {
+      "avg": null,
+      "bundle_count": 0
+    },
+    "dataset_balance": {
+      "label_counts": {
+        "L1_BASIC": 1
+      },
+      "total_samples": 1,
+      "h_normalized": 0.0,
+      "imbalance_ratio": 1.0,
+      "is_balanced": false,
+      "citation": "Garcia et al. (2019), Pattern Recognition 91:216-231"
+    },
+    "novel_ttp_rate": 0.0,
+    "total_events": 1,
+    "unique_ttps_count": 1
+  }
 }

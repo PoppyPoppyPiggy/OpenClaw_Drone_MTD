@@ -56,7 +56,7 @@ import socket
 import struct
 import time
 import uuid
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as apm
@@ -78,6 +78,7 @@ from shared.models import (
     HoneyDroneConfig,
     MavlinkCaptureEvent,
 )
+from honey_drone.behavior_learner import BehaviorLearner
 
 logger = get_logger(__name__)
 
@@ -176,11 +177,67 @@ class OpenClawAgent:
         self._tasks: list[asyncio.Task] = []
         self._state_lock = asyncio.Lock()  # _silenced, _current_sysid 동기화
 
+        # ── Learned Policy for behavior selection ──────────────
+        # Pipeline: train_dqn.py → .pt file → BehaviorLearner loads → select_action()
+        import os
+        _model_dir = os.path.join(os.environ.get("RESULTS_DIR", "results"), "models")
+        _policy_mode = os.environ.get("POLICY_MODE", "auto")  # auto/dqn/greedy/random
+        self._behavior_learner = BehaviorLearner(
+            drone_id=config.drone_id,
+            model_dir=_model_dir,
+            policy_mode=_policy_mode,
+        )
+        self._pre_action_p_real: float = 0.7  # actual Bayesian belief BEFORE action
+        self._pre_action_packets: int = 0      # packet count BEFORE action
+        self._last_action_idx: int = -1
+        self._last_action_context: dict = {}
+        # Set by AgenticDecoyEngine after construction
+        self._belief_mgr_ref = None  # DeceptionStateManager reference
+        self._tracker_ref = None     # EngagementTracker reference
+
+        # ── Transport 콜백 (AgenticDecoyEngine.set_transport()에서 설정) ──
+        # send_to_attacker(data: bytes, addr: tuple[str, int]) -> Awaitable
+        self._send_to_attacker: Optional[Callable] = None
+        # get_active_attackers() -> list[tuple[str, int]]  (ip, port) 쌍
+        self._get_active_attackers: Optional[Callable] = None
+        # Ghost 포트 TCP 서버 목록 (정리용)
+        self._ghost_servers: list[asyncio.AbstractServer] = []
+
         # pymavlink encoder
         self._mav = mavutil.mavlink.MAVLink(
             file=None, srcSystem=self._current_sysid, srcComponent=1
         )
         self._mav.robust_parsing = True
+
+    # ── Transport ─────────────────────────────────────────────────────────────
+
+    def set_transport(
+        self,
+        send_fn: Callable,
+        get_attackers_fn: Callable,
+    ) -> None:
+        """
+        [ROLE] 엔진에서 호출하여 UDP 전송 콜백과 활성 공격자 목록 제공.
+
+        [DATA FLOW]
+            AgenticDecoyEngine.start()
+            ──▶ set_transport(send_fn, get_attackers_fn)
+            ──▶ proactive 행동에서 실제 패킷 전송 가능
+        """
+        self._send_to_attacker = send_fn
+        self._get_active_attackers = get_attackers_fn
+
+    async def _broadcast_to_attackers(self, data: bytes) -> None:
+        """
+        [ROLE] 모든 활성 공격자에게 MAVLink 패킷 브로드캐스트.
+        """
+        if not self._send_to_attacker or not self._get_active_attackers:
+            return
+        for addr in self._get_active_attackers():
+            try:
+                await self._send_to_attacker(data, addr)
+            except Exception:
+                pass
 
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -231,6 +288,10 @@ class OpenClawAgent:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
+        # Ghost TCP 서버 정리
+        for srv in self._ghost_servers:
+            srv.close()
+        self._ghost_servers.clear()
         logger.info(
             "openclaw_agent stopped",
             drone_id=self._config.drone_id,
@@ -373,26 +434,67 @@ class OpenClawAgent:
     async def _proactive_loop(self) -> None:
         """
         [ROLE] 주기적 비요청 기만 행동 자율 실행 (BEHAVIOR 2).
-               매 AGENT_PROACTIVE_INTERVAL_SEC마다 랜덤 행동 1개 선택·실행.
+               LinUCB Contextual Bandit이 공격 상황(context)을 관찰하고
+               confusion score를 최대화하는 행동을 선택한다.
+
+        [ALGORITHM] LinUCB (Li et al., 2010, WWW)
+            context = [attacker_count, avg_dwell, avg_cmds, max_level,
+                       avg_p_real, services_touched, ghost_active, time_since_last]
+            action = argmax_a ( x^T θ_a + α √(x^T A_a^{-1} x) )
+            reward = Δconfusion + Δdwell (post - pre, normalized)
 
         [DATA FLOW]
-            sleep(interval) ──▶ 랜덤 행동 선택
-            ──▶ _proactive_statustext() / _proactive_flight_sim()
-                / _proactive_ghost_port() / _proactive_reboot()
-                / _proactive_fake_key()
+            sleep(interval)
+            ──▶ _build_context() → context vector
+            ──▶ BehaviorLearner.select_action(context) → action
+            ──▶ 행동 실행
+            ──▶ _compute_reward() → reward
+            ──▶ BehaviorLearner.update(action, reward)
         """
+        action_funcs = [
+            self._proactive_statustext,
+            self._proactive_flight_sim,
+            self._proactive_ghost_port,
+            self._proactive_reboot,
+            self._proactive_fake_key,
+        ]
+
         while True:
             try:
                 await asyncio.sleep(AGENT_PROACTIVE_INTERVAL_SEC)
-                action = random.choice([
-                    self._proactive_statustext,
-                    self._proactive_flight_sim,
-                    self._proactive_ghost_port,
-                    self._proactive_reboot,
-                    self._proactive_fake_key,
-                ])
-                await action()
+
+                # ── Reward feedback for previous action ──
+                if self._last_action_idx >= 0:
+                    reward = self._compute_reward()
+                    self._behavior_learner.update(
+                        self._last_action_idx, reward, self._last_action_context,
+                    )
+
+                # ── Build context from current attack state ──
+                context = self._build_mab_context()
+
+                # ── Select action via LinUCB ──
+                action_idx, action_name, debug = self._behavior_learner.select_action(context)
+
+                # ── Record pre-action state for causal reward ──
+                self._pre_action_p_real = self._get_real_p_real()
+                self._pre_action_packets = self._get_real_packet_count()
+                self._last_action_idx = action_idx
+                self._last_action_context = context
+
+                # ── Execute selected action (non-blocking) ──
+                # Long actions (flight_sim=60s, reboot=15s) run in background
+                # so the MAB loop isn't blocked. Reward is collected next cycle.
+                asyncio.create_task(action_funcs[action_idx]())
+
             except asyncio.CancelledError:
+                # Final reward update before shutdown
+                if self._last_action_idx >= 0:
+                    reward = self._compute_reward()
+                    self._behavior_learner.update(
+                        self._last_action_idx, reward, self._last_action_context,
+                    )
+                self._behavior_learner._save_model()
                 break
             except Exception as e:
                 logger.error(
@@ -400,6 +502,117 @@ class OpenClawAgent:
                     drone_id=self._config.drone_id,
                     error=str(e),
                 )
+
+    def _build_mab_context(self) -> dict:
+        """
+        Build context vector from REAL system state.
+        All values sourced from DeceptionStateManager + EngagementTracker.
+        """
+        attacker_count = len(self._fingerprints)
+        avg_dwell = 0.0
+        avg_cmds = 0.0
+        max_level = 0
+        avg_services = 0.0
+
+        if self._fingerprints:
+            dwells = []
+            cmds_counts = []
+            for fp in self._fingerprints.values():
+                d = (time.time_ns() - fp.first_seen_ns) / 1e9
+                dwells.append(d)
+                cmds_counts.append(len(fp.command_sequence))
+            avg_dwell = sum(dwells) / len(dwells)
+            avg_cmds = sum(cmds_counts) / len(cmds_counts)
+            level_map = {
+                AttackerTool.UNKNOWN: 0, AttackerTool.NMAP_SCANNER: 0,
+                AttackerTool.MAVPROXY_GCS: 1, AttackerTool.DRONEKIT_SCRIPT: 2,
+                AttackerTool.METASPLOIT_MODULE: 3, AttackerTool.CUSTOM_EXPLOIT: 4,
+            }
+            max_level = max(level_map.get(fp.tool, 0) for fp in self._fingerprints.values())
+            avg_services = sum(
+                len(self._services_touched.get(ip, set())) for ip in self._fingerprints
+            ) / len(self._fingerprints)
+
+        # Real P(real) from DeceptionStateManager
+        avg_p_real = self._get_real_p_real()
+
+        return {
+            "attacker_count": attacker_count,
+            "avg_dwell_sec": avg_dwell,
+            "avg_commands": avg_cmds,
+            "max_level": max_level,
+            "avg_p_real": avg_p_real,
+            "services_touched": avg_services,
+            "ghost_active": len(self._active_ghost_ports),
+            "time_since_last": 0.0,
+        }
+
+    def _get_real_p_real(self) -> float:
+        """
+        Get ACTUAL P(real|observations) from DeceptionStateManager.
+        This is the real Bayesian belief, not a proxy.
+        """
+        if self._belief_mgr_ref is None:
+            return 0.7  # fallback only if not wired
+        beliefs = self._belief_mgr_ref.get_all_beliefs()
+        if not beliefs:
+            return 0.7  # prior
+        return sum(b.p_believes_real for b in beliefs) / len(beliefs)
+
+    def _get_real_packet_count(self) -> int:
+        """
+        Get total packet count from EngagementTracker.
+        Measures whether our action triggered attacker engagement.
+        """
+        if self._tracker_ref is None:
+            return 0
+        all_metrics = self._tracker_ref.get_all_active_metrics(self._config.drone_id)
+        return sum(m.commands_issued for m in all_metrics)
+
+    def _compute_reward(self) -> float:
+        """
+        Reward based on REAL measurable outcomes of the action:
+
+        R = w1 * Δ_belief + w2 * engagement_signal
+
+        Δ_belief = P(real)_after - P(real)_before
+          → Positive if our action made attacker believe more (deception worked)
+          → Negative if attacker became suspicious (deception backfired)
+          → Normalized from [-0.2, +0.2] to [0, 1]
+
+        engagement_signal = 1 if attacker sent new packets after our action, else 0
+          → Directly measures: did our proactive action trigger a response?
+
+        Combined: 70% belief change + 30% engagement
+        """
+        # Component 1: Bayesian belief change (from DeceptionStateManager)
+        post_p_real = self._get_real_p_real()
+        delta_belief = post_p_real - self._pre_action_p_real
+        # Map [-0.2, +0.2] → [0, 1]. Center at 0.5 (no change = neutral reward)
+        r_belief = max(0.0, min(1.0, (delta_belief + 0.2) / 0.4))
+
+        # Component 2: Did attacker engage after our action?
+        post_packets = self._get_real_packet_count()
+        new_packets = post_packets - self._pre_action_packets
+        r_engage = min(1.0, new_packets / 3.0)  # 3+ new packets = full reward
+
+        reward = 0.7 * r_belief + 0.3 * r_engage
+
+        logger.info(
+            "mab_reward_computed",
+            drone_id=self._config.drone_id,
+            p_real_before=round(self._pre_action_p_real, 4),
+            p_real_after=round(post_p_real, 4),
+            delta_belief=round(delta_belief, 4),
+            packets_before=self._pre_action_packets,
+            packets_after=post_packets,
+            new_packets=new_packets,
+            r_belief=round(r_belief, 4),
+            r_engage=round(r_engage, 4),
+            reward=round(reward, 4),
+        )
+
+        return round(reward, 4)
 
     async def _sysid_rotation_loop(self) -> None:
         """
@@ -436,8 +649,8 @@ class OpenClawAgent:
                         "effect_on_attacker": "MAVLink srcSystem in all future packets changes",
                     }],
                 )
-                logger.debug(
-                    "sysid rotated",
+                logger.info(
+                    "sysid_rotated",
                     drone_id=self._config.drone_id,
                     old=old_sysid,
                     new=self._current_sysid,
@@ -475,8 +688,8 @@ class OpenClawAgent:
                         "effect_on_attacker": "WebSocket connections on old port will fail",
                     }],
                 )
-                logger.debug(
-                    "ws_port rotated",
+                logger.info(
+                    "ws_port_rotated",
                     drone_id=self._config.drone_id,
                     old=old_port,
                     new=self._current_ws_port,
@@ -564,9 +777,11 @@ class OpenClawAgent:
         [ROLE] BEHAVIOR 2a — 비요청 STATUSTEXT로 가짜 운영자 활동 시뮬.
 
         [DATA FLOW]
-            랜덤 메시지 선택 ──▶ STATUSTEXT 패킷 생성 ──▶ 로그
+            랜덤 메시지 선택 ──▶ STATUSTEXT 패킷 생성 ──▶ 공격자에게 전송
         """
         msg_text = random.choice(_STATUS_MESSAGES_OPERATOR)
+        pkt = self._build_statustext(msg_text)
+        await self._broadcast_to_attackers(pkt)
         self._record_decision(
             "proactive_statustext",
             rationale=f"sent: {msg_text}",
@@ -582,7 +797,7 @@ class OpenClawAgent:
         [ROLE] BEHAVIOR 2b — 일시적 비행 시뮬레이션 (고도 0→50→100→50→0).
 
         [DATA FLOW]
-            12단계 고도 변화 ──▶ 각 단계 5초 ──▶ 원래 상태 복원
+            12단계 고도 변화 ──▶ 각 단계마다 HEARTBEAT 전송 ──▶ 원래 상태 복원
         """
         self._record_decision(
             "proactive_flight_sim",
@@ -592,20 +807,61 @@ class OpenClawAgent:
         step_sec = _FLIGHT_SIM_DURATION_SEC / _FLIGHT_SIM_STEPS
         for alt in altitudes:
             self._fake_params["SIMULATED_ALT"] = float(alt)
+            # 각 단계마다 HEARTBEAT + STATUSTEXT로 고도 변화를 공격자에게 전달
+            pkt = self._build_heartbeat()
+            await self._broadcast_to_attackers(pkt)
+            if alt > 0:
+                status_pkt = self._build_statustext(f"Alt: {alt}m AGL")
+                await self._broadcast_to_attackers(status_pkt)
             await asyncio.sleep(step_sec)
         self._fake_params.pop("SIMULATED_ALT", None)
 
     async def _proactive_ghost_port(self) -> None:
         """
-        [ROLE] BEHAVIOR 2c — 새 ghost 서비스 포트 개방 + STATUSTEXT 힌트.
-               _current_ws_port��� 힌트에 포함하여 포트 로테이션 효과 측정.
+        [ROLE] BEHAVIOR 2c — 새 ghost 서비스 포트에 실제 TCP 리스너 개방.
+               공격자가 포트 스캔 시 새 서비스를 발견하도록 유도.
+               STATUSTEXT 힌트도 전송하여 포트 발견을 촉진.
 
         [DATA FLOW]
-            랜덤 포트 선택 ──▶ STATUSTEXT 힌트 생성 ──▶ 로그
+            랜덤 포트 선택 ──▶ TCP 리스너 개방 ──▶ STATUSTEXT 힌트 전송
         """
         ghost_port = random.randint(19000, 19500)
         old_ghost_ports = list(self._active_ghost_ports)
-        self._active_ghost_ports.append(ghost_port)
+
+        # 실제 TCP 리스너 개방 — 접속 시 SSH 배너 응답
+        drone_id = self._config.drone_id
+        banner = f"SSH-2.0-OpenSSH_8.9 MIRAGE-{drone_id}\r\n".encode()
+
+        async def _ghost_handler(
+            reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+        ) -> None:
+            try:
+                writer.write(banner)
+                await writer.drain()
+                # 공격자 데이터를 최대 30초간 대기 (체류 시간 연장)
+                try:
+                    await asyncio.wait_for(reader.read(4096), timeout=30.0)
+                except asyncio.TimeoutError:
+                    pass
+            except Exception:
+                pass
+            finally:
+                writer.close()
+
+        try:
+            server = await asyncio.start_server(
+                _ghost_handler, "0.0.0.0", ghost_port,
+            )
+            self._ghost_servers.append(server)
+            self._active_ghost_ports.append(ghost_port)
+        except OSError:
+            logger.debug("ghost port bind failed", port=ghost_port)
+            return
+
+        # STATUSTEXT 힌트를 공격자에게 전송
+        hint_pkt = self._build_statustext(f"svc started :{ghost_port}")
+        await self._broadcast_to_attackers(hint_pkt)
+
         self._record_decision(
             "proactive_ghost_port",
             rationale=(
@@ -688,15 +944,28 @@ class OpenClawAgent:
 
     async def _proactive_fake_key(self) -> None:
         """
-        [ROLE] BEHAVIOR 2e — 가짜 MAVLink signing key PARAM_VALUE 전송.
+        [ROLE] BEHAVIOR 2e — 가짜 MAVLink signing key를 PARAM_VALUE +
+               STATUSTEXT로 공격자에게 "실수로" 누출.
 
         [DATA FLOW]
-            fake key 생성 ──▶ 로그 기록
+            fake key 생성 ──▶ PARAM_VALUE 패킷 전송 ──▶ STATUSTEXT 힌트 전송
         """
         fake_key = hashlib.sha256(
             f"{self._config.drone_id}:{time.time()}".encode()
         ).hexdigest()[:32]
         self._planted_credentials[f"signing_key_{int(time.time())}"] = fake_key
+
+        # STATUSTEXT로 키를 "실수로" 누출 (공격자가 캡처할 수 있음)
+        leak_pkt = self._build_statustext(f"key={fake_key[:16]}")
+        await self._broadcast_to_attackers(leak_pkt)
+
+        # PARAM_VALUE로도 전송 — 파라미터 조회 시 signing key 노출
+        self._fake_params["SIGNING_KEY"] = float(
+            int(fake_key[:8], 16)
+        )
+        param_pkt = self._build_param_value_rich()
+        await self._broadcast_to_attackers(param_pkt)
+
         self._record_decision(
             "proactive_fake_key",
             rationale=f"leaked fake signing key: {fake_key[:8]}...",
@@ -959,6 +1228,16 @@ class OpenClawAgent:
         # Emit level reclassification if tool changed
         if fp.tool != old_tool:
             evidence = list(cmds[-3:]) if len(cmds) >= 3 else list(cmds)
+            logger.info(
+                "tool_identified",
+                drone_id=self._config.drone_id,
+                attacker_ip=fp.attacker_ip,
+                from_tool=old_tool.value if old_tool else "unknown",
+                to_tool=fp.tool.value,
+                evidence=evidence,
+                avg_interval=round(avg_interval, 3),
+                unique_cmds=len(unique_cmds),
+            )
             self._udp_emit(19998, {
                 "event": "level_reclassified",
                 "drone_id": self._config.drone_id,
@@ -1419,9 +1698,15 @@ class OpenClawAgent:
             "confidence": round(confidence, 2),
         })
 
-        logger.debug(
+        logger.info(
             "agent_decision",
             decision_id=decision.decision_id[:8],
             behavior=behavior,
+            rationale=rationale,
+            phase=phase,
+            tool=level,
+            dwell_sec=round(dwell, 1),
+            confidence=round(confidence, 2),
+            total_decisions=len(self._decisions),
             target_ip=target_ip,
         )

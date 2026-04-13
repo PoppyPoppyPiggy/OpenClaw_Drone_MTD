@@ -1,0 +1,115 @@
+% ═══════════════════════════════════════════════════════════════
+% Figure: OpenClawAgent OODA Loop — Autonomous Deception Cycle
+% Usage: \input{figures/fig_ooda_loop.tex}
+% ═══════════════════════════════════════════════════════════════
+\begin{figure}[t]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+    >=stealth,
+    node distance=2.8cm,
+    phase/.style={
+        rectangle, rounded corners=8pt, draw=black!80, line width=1.2pt,
+        minimum width=3.2cm, minimum height=1.6cm, align=center,
+        font=\sffamily\bfseries\small
+    },
+    observe/.style={phase, fill=blue!15, draw=blue!60},
+    orient/.style={phase, fill=orange!15, draw=orange!60},
+    decide/.style={phase, fill=green!15, draw=green!60},
+    act/.style={phase, fill=red!15, draw=red!60},
+    detail/.style={
+        rectangle, rounded corners=4pt, draw=gray!50, fill=gray!5,
+        font=\sffamily\scriptsize, align=left, text width=3.6cm,
+        inner sep=4pt
+    },
+    autonomous/.style={
+        rectangle, rounded corners=4pt, draw=purple!60, fill=purple!8,
+        font=\sffamily\scriptsize, align=left, text width=3.2cm,
+        inner sep=4pt, dashed
+    },
+    loopline/.style={->, line width=1.5pt, draw=black!70},
+    detailline/.style={->, line width=0.6pt, draw=gray!60, dashed},
+]
+
+% ── OODA 4 phases (circular layout) ──────────────────────────
+\node[observe] (O) at (0, 3.5) {OBSERVE\\[-2pt]{\footnotesize\textnormal{관찰}}};
+\node[orient]  (R) at (5, 3.5) {ORIENT\\[-2pt]{\footnotesize\textnormal{판향}}};
+\node[decide]  (D) at (5, 0)   {DECIDE\\[-2pt]{\footnotesize\textnormal{결정}}};
+\node[act]     (A) at (0, 0)   {ACT\\[-2pt]{\footnotesize\textnormal{��동}}};
+
+% ── Loop arrows ──────────────────────────────────────────────
+\draw[loopline] (O) -- node[above, font=\sffamily\tiny, text=black!60] {fingerprint} (R);
+\draw[loopline] (R) -- node[right, font=\sffamily\tiny, text=black!60] {phase+tool} (D);
+\draw[loopline] (D) -- node[below, font=\sffamily\tiny, text=black!60] {strategy} (A);
+\draw[loopline] (A) -- node[left, font=\sffamily\tiny, text=black!60] {feedback} (O);
+
+% ── Center label ─────────────────────────────────────────────
+\node[font=\sffamily\bfseries\footnotesize, text=purple!70] at (2.5, 1.75) {OpenClawAgent};
+\node[font=\sffamily\tiny, text=gray!70] at (2.5, 1.35) {Autonomous OODA};
+
+% ── Detail boxes ─────────────────────────────────────────────
+% OBSERVE details
+\node[detail] (Od) at (-3.8, 4.8) {
+    \textbf{observe() / observe\_ws()}\\[2pt]
+    \textbullet\ MAVLink msg\_type 추출\\
+    \textbullet\ inter-arrival timing 측정\\
+    \textbullet\ 명령 시퀀스 축적\\
+    \textbullet\ 서비스 접촉 집합 갱신
+};
+\draw[detailline] (Od.east) -- (O.west);
+
+% ORIENT details
+\node[detail] (Rd) at (9.2, 4.8) {
+    \textbf{\_detect\_tool() + \_detect\_phase()}\\[2pt]
+    \textbullet\ nmap: interval$<$0.1s, cmds$>$5\\
+    \textbullet\ mavproxy: HB$\times$2$\to$DATA\_STREAM\\
+    \textbullet\ dronekit: SET\_MODE pattern\\
+    \textbullet\ RECON$\to$EXPLOIT$\to$PERSIST$\to$EXFIL
+};
+\draw[detailline] (Rd.west) -- (R.east);
+
+% DECIDE details
+\node[detail] (Dd) at (9.2, -1.2) {
+    \textbf{generate\_response()}\\[2pt]
+    \textbullet\ RECON: rich telemetry\\
+    \textbullet\ EXPLOIT: ACK(ACCEPTED)\\
+    \textbullet\ PERSIST: operator STATUSTEXT\\
+    \textbullet\ EXFIL: fake logs/config
+};
+\draw[detailline] (Dd.west) -- (D.east);
+
+% ACT details
+\node[detail] (Ad) at (-3.8, -1.2) {
+    \textbf{MAVLink bytes / WS JSON}\\[2pt]
+    \textbullet\ UDP sendto $\to$ 공격자\\
+    \textbullet\ BeliefState 갱신\\
+    \textbullet\ MTD urgency 평가\\
+    \textbullet\ CTI event queue push
+};
+\draw[detailline] (Ad.east) -- (A.west);
+
+% ── Autonomous behavior loops (bottom) ───────────────────────
+\node[autonomous] (auto) at (2.5, -3.0) {
+    \textbf{5 Autonomous Loops}\\[2pt]
+    \textbullet\ proactive STATUSTEXT (15s)\\
+    \textbullet\ sysid rotation (45s)\\
+    \textbullet\ WS port rotation (90s)\\
+    \textbullet\ mission refresh (60s)\\
+    \textbullet\ param drift (45s)
+};
+\draw[detailline, draw=purple!50] (auto.north) -- (A.south);
+
+% ── Confusion amplification ──────────────────────────────────
+\node[autonomous] (conf) at (7.5, -3.0) {
+    \textbf{Confusion Amplification}\\[2pt]
+    \textbullet\ ghost port (services $\geq \theta$)\\
+    \textbullet\ false flag (dwell $> \theta$)\\
+    \textbullet\ ARM $\to$ takeoff $\to$ crash
+};
+\draw[detailline, draw=purple!50] (conf.north west) -- (D.south);
+
+\end{tikzpicture}
+}
+\caption{OpenClawAgent OODA 자율 기만 루프. 4단계 관찰-판향-결정-행동 사이클이 공격자 도구(5종)와 공격 단계(4단계)를 실시간으로 식별하고 적응형 응답을 생성한다. 5개 독립 자율 행동 루프와 혼란 증폭 트리거가 병렬 실행된다.}
+\label{fig:ooda}
+\end{figure}

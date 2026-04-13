@@ -198,7 +198,7 @@ def _save_all_results() -> None:
             total_beliefs += 1
     confusion_data["avg_confusion_score"] = round(
         total_p / max(total_beliefs, 1), 4
-    ) if total_beliefs > 0 else 0.70
+    ) if total_beliefs > 0 else 0.5
     Path("results/metrics/confusion_scores.json").write_text(
         json.dumps(confusion_data, indent=2)
     )

@@ -1,7 +1,7 @@
 [
   {
-    "timestamp": 1775484626.7116864,
-    "drone_id": "honey_01",
+    "timestamp": 1776052108.6171665,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
@@ -9,47 +9,13 @@
       "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 244.4,
     "executed": true
   },
   {
-    "timestamp": 1775484630.7164373,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484631.7362795,
-    "drone_id": "honey_02",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484634.739234,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484635.7672698,
-    "drone_id": "honey_02",
+    "timestamp": 1776052111.6162736,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
@@ -57,23 +23,13 @@
       "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 114.1,
     "executed": true
   },
   {
-    "timestamp": 1775484638.7704732,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484639.7718656,
-    "drone_id": "honey_02",
+    "timestamp": 1776052114.1837611,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
@@ -81,11 +37,13 @@
       "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 135.4,
     "executed": true
   },
   {
-    "timestamp": 1775484642.7986143,
-    "drone_id": "honey_01",
+    "timestamp": 1776052116.8902311,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
@@ -93,198 +51,78 @@
       "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 173.0,
     "executed": true
   },
   {
-    "timestamp": 1775484643.800644,
-    "drone_id": "honey_02",
+    "timestamp": 1776052119.2021146,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
       "port_rotate",
       "ip_shuffle"
     ],
-    "execution_time_ms": 0.01,
+    "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 123.8,
     "executed": true
   },
   {
-    "timestamp": 1775484646.80626,
-    "drone_id": "honey_01",
+    "timestamp": 1776052121.5645437,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
       "port_rotate",
       "ip_shuffle"
     ],
-    "execution_time_ms": 0.01,
+    "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 310.1,
     "executed": true
   },
   {
-    "timestamp": 1775484648.8082604,
-    "drone_id": "honey_02",
+    "timestamp": 1776052123.9632318,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
       "port_rotate",
       "ip_shuffle"
     ],
-    "execution_time_ms": 0.01,
+    "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 146.3,
     "executed": true
   },
   {
-    "timestamp": 1775484651.815008,
-    "drone_id": "honey_01",
+    "timestamp": 1776052127.1444914,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
       "port_rotate",
       "ip_shuffle"
     ],
-    "execution_time_ms": 0.01,
+    "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 189.3,
     "executed": true
   },
   {
-    "timestamp": 1775484652.8164556,
-    "drone_id": "honey_02",
+    "timestamp": 1776052129.7303135,
+    "drone_id": "honey_03",
     "level": "L1_BASIC",
     "urgency": 0.3,
     "actions": [
       "port_rotate",
       "ip_shuffle"
     ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484655.8207903,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484656.8220718,
-    "drone_id": "honey_02",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484659.8250394,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484660.8255918,
-    "drone_id": "honey_02",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484663.8284247,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484664.829842,
-    "drone_id": "honey_02",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484667.8337398,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484668.8341377,
-    "drone_id": "honey_02",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484671.839692,
-    "drone_id": "honey_01",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484672.8403084,
-    "drone_id": "honey_02",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
-    "executed": true
-  },
-  {
-    "timestamp": 1775484676.8482778,
-    "drone_id": "honey_02",
-    "level": "L1_BASIC",
-    "urgency": 0.3,
-    "actions": [
-      "port_rotate",
-      "ip_shuffle"
-    ],
-    "execution_time_ms": 0.01,
+    "execution_time_ms": 0.0,
+    "action_type": "port_rotate",
+    "latency_ms": 203.4,
     "executed": true
   }
 ]

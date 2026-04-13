@@ -1,8 +1,8 @@
 {
-  "total_samples": 1012,
-  "positive_count": 405,
-  "negative_count": 607,
-  "class_ratio": 1.499,
+  "total_samples": 492,
+  "positive_count": 197,
+  "negative_count": 295,
+  "class_ratio": 1.497,
   "unique_ttps": [
     "T0820",
     "T0821",
@@ -20,7 +20,7 @@
   "ttp_count": 12,
   "duplicate_ids": [],
   "passed": true,
-  "validated_at": 1775427727.9658566,
+  "validated_at": 1776013456.0985823,
   "issues": [
     {
       "code": "V5",

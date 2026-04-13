@@ -1,0 +1,37 @@
+# Dockerfile.honeydrone — Real OpenClaw Honeydrone with OODA Deception
+#
+# Project  : MIRAGE-UAS
+# Author   : DS Lab
+#
+# [ROLE] Full honeydrone with AgenticDecoyEngine + OpenClawAgent
+#        Replaces cc_stub with real adaptive deception.
+#
+# [PORTS]
+#   14550/udp  — MAVLink (AgenticDecoyEngine OODA)
+#   18789/tcp  — WebSocket (OpenClaw gateway emulation)
+#   80/tcp     — HTTP breadcrumbs (credentials, endpoints)
+#   8554/tcp   — RTSP camera SDP
+#   19000+/tcp — Ghost telemetry services
+#   14560+/udp — Ghost MAVLink (secondary sysid)
+#
+# [BUILD]
+#   docker build -f docker/Dockerfile.honeydrone -t mirage-honeydrone:latest .
+
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir \
+    pymavlink websockets aiohttp python-dotenv structlog stix2 numpy && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+COPY src/ /app/src/
+COPY config/.env /app/config/.env
+COPY docker/honeydrone_entry.py /app/entry.py
+
+WORKDIR /app
+
+EXPOSE 14550/udp 18789/tcp 80/tcp 2222/tcp 8554/tcp 19000-19020/tcp 14560-14570/udp
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=15s \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:80/health')"
+
+CMD ["python3", "-u", "/app/entry.py"]

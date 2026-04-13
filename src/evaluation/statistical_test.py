@@ -1,45 +1,25 @@
 #!/usr/bin/env python3
 """
-statistical_test.py — MIRAGE-UAS 통계 검정 및 LaTeX 테이블 생성
+statistical_test.py — MIRAGE-UAS N=30 통계 검정 파이프라인 + LaTeX 테이블 생성
 
-Project  : MIRAGE-UAS
-Module   : Evaluation / Statistical Test
-Author   : DS Lab / 민성 <kmseong0508@kyonggi.ac.kr>
-Created  : 2026-04-06
-Version  : 0.1.0
-
-[Inputs]
-    - results/metrics/table_ii_engagement.json
-    - results/metrics/table_iii_mtd_latency.json
-    - results/metrics/table_iv_dataset.json
-    - results/metrics/table_v_deception.json
-    - results/metrics/table_vi_agent_decisions.json
-
-[Outputs]
-    - results/metrics/statistical_report.json
-    - results/latex/table_ii.tex ... table_vi.tex
-
-[Dependencies]
-    - scipy >= 1.11 (Wilcoxon signed-rank test)
-    - numpy (Cohen's d 계산)
-
-[설계 원칙]
-    - Bonferroni correction: p_corrected = p_raw × N_comparisons
-    - 효과 크기: Cohen's d (|d|<0.2 small, 0.2-0.8 medium, >0.8 large)
-    - LaTeX 출력: \\begin{table}...\\end{table} 직접 논문 삽입 가능
-
-[DATA FLOW]
-    results/metrics/*.json ──▶ run_all_tests()
-    ──▶ statistical_report.json
-    ──▶ generate_latex_tables() ──▶ results/latex/*.tex
+References:
+  Wilcoxon  -- Wilcoxon, F. (1945), Biometrics Bull. 1(6):80-83
+  Cohen's d -- Cohen, J. (1988), Statistical Power Analysis, 2nd ed.
+  Holm-Bonf -- Holm, S. (1979), Scand. J. Stat. 6(2):65-70
+  Bootstrap -- Efron & Tibshirani (1993), An Introduction to the Bootstrap
 """
 
 from __future__ import annotations
 
 import json
-import math
+import warnings
 from pathlib import Path
 from typing import Any
+
+import numpy as np
+from scipy.stats import wilcoxon, shapiro
+from scipy.stats import bootstrap as scipy_bootstrap
+from statsmodels.stats.multitest import multipletests
 
 from shared.constants import RESULTS_DIR
 from shared.logger import get_logger
@@ -47,75 +27,157 @@ from shared.logger import get_logger
 logger = get_logger(__name__)
 
 _METRICS_DIR = Path(RESULTS_DIR) / "metrics"
-_LATEX_DIR   = Path(RESULTS_DIR) / "latex"
+_LATEX_DIR = Path(RESULTS_DIR) / "latex"
 
-# Bonferroni 보정 비교 수 (baseline vs treatment × 3 metrics)
-_N_COMPARISONS: int = 3
 
+# ── Eq.22: Normality check ──────────────────────────────────────────────────
+
+def check_normality(data: np.ndarray, alpha: float = 0.05) -> dict:
+    """Shapiro-Wilk normality test (suitable for N < 50)."""
+    if len(data) < 3:
+        return {"normal": False, "p_value": None, "warning": "N < 3"}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        stat, p = shapiro(data)
+    return {
+        "statistic": round(float(stat), 4),
+        "p_value": round(float(p), 6),
+        "normal": float(p) > alpha,
+        "test": "Shapiro-Wilk",
+    }
+
+
+# ── Eq.23: Wilcoxon signed-rank test ────────────────────────────────────────
 
 def run_wilcoxon_test(
     baseline: list[float], treatment: list[float]
 ) -> dict[str, Any]:
-    """
-    [ROLE] Wilcoxon signed-rank test + Bonferroni correction.
-           paired sample 비모수 검정 — 정규성 가정 불필요.
-
-    [DATA FLOW]
-        baseline, treatment ──▶ scipy.stats.wilcoxon()
-        ──▶ {statistic, p_raw, p_corrected, significant}
-    """
-    try:
-        from scipy import stats
-        stat, p_raw = stats.wilcoxon(baseline, treatment)
-    except ImportError:
-        logger.warning("scipy not installed — using placeholder p-value")
-        stat = 0.0
-        p_raw = 1.0
-    except ValueError as e:
-        logger.warning("wilcoxon_failed", error=str(e))
-        return {"statistic": 0.0, "p_raw": 1.0, "p_corrected": 1.0,
-                "significant": False, "error": str(e)}
-
-    p_corrected = min(p_raw * _N_COMPARISONS, 1.0)
+    """Wilcoxon signed-rank test (non-parametric paired test)."""
+    if len(baseline) != len(treatment):
+        return {"error": "sample size mismatch", "p_value": 1.0, "significant": False}
+    if len(baseline) < 5:
+        return {"error": f"need >= 5 pairs (got {len(baseline)})", "p_value": 1.0, "significant": False}
+    stat, p = wilcoxon(treatment, baseline, alternative="greater")
     return {
+        "test": "Wilcoxon signed-rank",
         "statistic": round(float(stat), 4),
-        "p_raw": round(float(p_raw), 6),
-        "p_corrected": round(float(p_corrected), 6),
-        "significant": p_corrected < 0.05,
+        "p_value": round(float(p), 6),
+        "significant": float(p) < 0.05,
+        "n_pairs": len(baseline),
+        "alternative": "greater",
     }
 
 
-def compute_effect_size(a: list[float], b: list[float]) -> dict[str, Any]:
-    """
-    [ROLE] Cohen's d 효과 크기 계산.
-           |d| < 0.2 = small, 0.2-0.8 = medium, > 0.8 = large.
+# ── Eq.24: Cohen's d (paired) ───────────────────────────────────────────────
 
-    [DATA FLOW]
-        a, b ──▶ d = (mean_a - mean_b) / pooled_std ──▶ {d, magnitude}
-    """
+def compute_effect_size(a: list[float], b: list[float]) -> dict[str, Any]:
+    """Cohen's d for paired samples: d_z = mean(D) / std(D)."""
     if not a or not b:
         return {"d": 0.0, "magnitude": "n/a"}
-
-    mean_a = sum(a) / len(a)
-    mean_b = sum(b) / len(b)
-    var_a  = sum((x - mean_a) ** 2 for x in a) / max(len(a) - 1, 1)
-    var_b  = sum((x - mean_b) ** 2 for x in b) / max(len(b) - 1, 1)
-    pooled = math.sqrt((var_a + var_b) / 2.0)
-
-    if pooled < 1e-10:
-        d = 0.0
-    else:
-        d = (mean_a - mean_b) / pooled
-
+    diff = np.array(a) - np.array(b)
+    std = float(np.std(diff, ddof=1))
+    d = float(np.mean(diff)) / std if std > 1e-10 else 0.0
     abs_d = abs(d)
-    if abs_d < 0.2:
-        mag = "small"
-    elif abs_d < 0.8:
-        mag = "medium"
-    else:
-        mag = "large"
+    mag = (
+        "large" if abs_d >= 0.8 else
+        "medium" if abs_d >= 0.5 else
+        "small" if abs_d >= 0.2 else
+        "negligible"
+    )
+    return {
+        "cohens_d": round(d, 4),
+        "d": round(d, 4),
+        "magnitude": mag,
+        "mean_diff": round(float(np.mean(diff)), 4),
+        "std_diff": round(std, 4),
+    }
 
-    return {"d": round(d, 4), "magnitude": mag}
+
+# ── Eq.25: Holm-Bonferroni correction ───────────────────────────────────────
+
+def holm_bonferroni(
+    test_results: dict[str, dict], alpha: float = 0.05
+) -> dict[str, dict]:
+    """Holm-Bonferroni step-down correction for multiple comparisons."""
+    names = list(test_results.keys())
+    raw_p = [test_results[n]["p_value"] for n in names]
+    rejected, p_adj, _, _ = multipletests(raw_p, alpha=alpha, method="holm")
+    for i, name in enumerate(names):
+        test_results[name]["p_adjusted"] = round(float(p_adj[i]), 6)
+        test_results[name]["significant_corrected"] = bool(rejected[i])
+    return test_results
+
+
+# ── Eq.26: Bootstrap BCa confidence interval ────────────────────────────────
+
+def bootstrap_ci(
+    data: list[float],
+    confidence: float = 0.95,
+    n_resamples: int = 10_000,
+    method: str = "BCa",
+) -> dict:
+    """Bootstrap BCa 95% CI — no normality assumption needed."""
+    arr = np.array(data)
+    result = scipy_bootstrap(
+        (arr,),
+        np.mean,
+        n_resamples=n_resamples,
+        confidence_level=confidence,
+        method=method,
+        random_state=42,
+    )
+    return {
+        "mean": round(float(np.mean(arr)), 4),
+        "std": round(float(np.std(arr, ddof=1)), 4),
+        "ci_low": round(float(result.confidence_interval.low), 4),
+        "ci_high": round(float(result.confidence_interval.high), 4),
+        "confidence": confidence,
+        "n_resamples": n_resamples,
+        "method": method,
+    }
+
+
+# ── Full statistical evaluation pipeline ─────────────────────────────────────
+
+def full_statistical_evaluation(
+    proposed_scores: list[float],
+    baselines: dict[str, list[float]],
+    metric_name: str = "DeceptionScore",
+) -> dict:
+    """
+    Complete N=30 statistical pipeline:
+      1. Shapiro-Wilk normality
+      2. Wilcoxon signed-rank (non-parametric)
+      3. Cohen's d effect size
+      4. Holm-Bonferroni correction
+      5. Bootstrap BCa 95% CI
+    """
+    proposed = np.array(proposed_scores)
+
+    # Summary with bootstrap CI
+    summary = bootstrap_ci(proposed_scores)
+    summary["metric"] = metric_name
+
+    # Normality of differences (use first baseline)
+    first_bl = list(baselines.values())[0] if baselines else proposed_scores
+    summary["normality"] = check_normality(proposed - np.array(first_bl))
+
+    # Pairwise comparisons
+    comparisons: dict[str, dict] = {}
+    for name, bl_scores in baselines.items():
+        w = run_wilcoxon_test(bl_scores, proposed_scores)
+        d = compute_effect_size(proposed_scores, bl_scores)
+        comparisons[name] = {**w, **d}
+
+    # Holm-Bonferroni
+    if comparisons:
+        comparisons = holm_bonferroni(comparisons)
+
+    summary["comparisons"] = comparisons
+    summary["all_significant"] = all(
+        c.get("significant_corrected", False) for c in comparisons.values()
+    )
+    return summary
 
 
 def generate_latex_tables(
@@ -178,27 +240,51 @@ def _write_table_ii_tex(m_dir: Path, o_dir: Path, written: list[Path]) -> None:
 
 
 def _write_table_iii_tex(m_dir: Path, o_dir: Path, written: list[Path]) -> None:
-    """[ROLE] Table III LaTeX 생성."""
+    """[ROLE] Table III LaTeX 생성 — includes SRRP + Entropy columns."""
     path = m_dir / "table_iii_mtd_latency.json"
     if not path.exists():
         return
     data = json.loads(path.read_text())
-    lines = [
-        r"\begin{table}[t]",
-        r"\centering",
-        r"\caption{MTD Response Latency by Action Type}",
-        r"\label{tab:mtd-latency}",
-        r"\begin{tabular}{lrrrr}",
-        r"\toprule",
-        r"Action & Count & Avg (ms) & P95 (ms) & Success \\",
-        r"\midrule",
-    ]
-    for row in data:
-        lines.append(
-            f"{row['action_type']} & {row['count']} & "
-            f"{row['avg_ms']:.1f} & {row['p95_ms']:.1f} & "
-            f"{row['success_rate']*100:.1f}\\% \\\\"
-        )
+
+    # Check if MTD effectiveness columns are present
+    has_srrp = any("srrp_pct" in row for row in data)
+
+    if has_srrp:
+        lines = [
+            r"\begin{table}[t]",
+            r"\centering",
+            r"\caption{MTD Response Latency and Effectiveness by Action Type}",
+            r"\label{tab:mtd-latency}",
+            r"\begin{tabular}{lrrrrr@{\hspace{4pt}}r}",
+            r"\toprule",
+            r"Action & Count & Avg (ms) & P95 (ms) & Success & SRRP (\%) & Entropy (bits) \\",
+            r"\midrule",
+        ]
+        for row in data:
+            lines.append(
+                f"{row['action_type']} & {row['count']} & "
+                f"{row['avg_ms']:.1f} & {row['p95_ms']:.1f} & "
+                f"{row['success_rate']*100:.1f}\\% & "
+                f"{row.get('srrp_pct', 0):.1f} & "
+                f"{row.get('entropy_bits', 0):.1f} \\\\"
+            )
+    else:
+        lines = [
+            r"\begin{table}[t]",
+            r"\centering",
+            r"\caption{MTD Response Latency by Action Type}",
+            r"\label{tab:mtd-latency}",
+            r"\begin{tabular}{lrrrr}",
+            r"\toprule",
+            r"Action & Count & Avg (ms) & P95 (ms) & Success \\",
+            r"\midrule",
+        ]
+        for row in data:
+            lines.append(
+                f"{row['action_type']} & {row['count']} & "
+                f"{row['avg_ms']:.1f} & {row['p95_ms']:.1f} & "
+                f"{row['success_rate']*100:.1f}\\% \\\\"
+            )
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}"]
     out = o_dir / "table_iii.tex"
     out.write_text("\n".join(lines))
@@ -292,43 +378,61 @@ def _write_table_vi_tex(m_dir: Path, o_dir: Path, written: list[Path]) -> None:
 
 
 def run_all_tests(metrics_dir: Path | None = None) -> dict[str, Any]:
-    """
-    [ROLE] 모든 통계 검정 실행 + 결과 저장.
-
-    [DATA FLOW]
-        results/metrics/*.json ──▶ 검정 실행
-        ──▶ results/metrics/statistical_report.json
-    """
+    """Run all statistical tests + generate LaTeX tables."""
     m_dir = metrics_dir or _METRICS_DIR
     report: dict[str, Any] = {"tests": [], "latex_files": []}
 
-    # Table II에서 L0 vs L3 dwell time 비교 (유의미한 차이 검증)
-    t2_path = m_dir / "table_ii_engagement.json"
-    if t2_path.exists():
-        data = json.loads(t2_path.read_text())
-        by_level = {d["level"]: d for d in data}
-        if "L0_SCRIPT_KIDDIE" in by_level and "L3_ADVANCED" in by_level:
-            l0_dwell = by_level["L0_SCRIPT_KIDDIE"]["avg_dwell_sec"]
-            l3_dwell = by_level["L3_ADVANCED"]["avg_dwell_sec"]
-            # 단일 값이므로 효과 크기만 보고
-            report["tests"].append({
-                "name": "L0_vs_L3_dwell",
-                "l0_dwell": l0_dwell,
-                "l3_dwell": l3_dwell,
-                "note": "requires N>=6 paired samples for Wilcoxon",
-            })
+    # N=30 statistics (if available)
+    stats_path = m_dir / "statistics.json"
+    if stats_path.exists():
+        report["n30_statistics"] = json.loads(stats_path.read_text())
 
-    # LaTeX 테이블 생성
+    # LaTeX tables
     latex_files = generate_latex_tables(m_dir)
     report["latex_files"] = [str(p) for p in latex_files]
 
-    # 보고서 저장
+    # Statistics LaTeX table (if N=30 data exists)
+    _write_statistics_tex(m_dir, _LATEX_DIR, report.get("n30_statistics"))
+
     report_path = m_dir / "statistical_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
     logger.info("statistical_report_saved", path=str(report_path))
-
     return report
+
+
+def _write_statistics_tex(
+    m_dir: Path, o_dir: Path, stats: dict | None
+) -> None:
+    """Generate LaTeX table for N=30 statistical results."""
+    if not stats or "comparisons" not in stats:
+        return
+    o_dir.mkdir(parents=True, exist_ok=True)
+    metric = stats.get("metric", "Score")
+    lines = [
+        r"\begin{table}[t]",
+        r"\centering",
+        f"\\caption{{Statistical Comparison of {metric} (N=30)}}",
+        r"\label{tab:statistics}",
+        r"\begin{tabular}{lrrrrl}",
+        r"\toprule",
+        r"Comparison & Mean $\Delta$ & 95\% CI & $p_{\mathrm{adj}}$ & Cohen's $d$ & Effect \\",
+        r"\midrule",
+        f"\\textbf{{MIRAGE-UAS}} & {stats['mean']:.4f} & "
+        f"[{stats['ci_low']:.4f}, {stats['ci_high']:.4f}] & --- & --- & --- \\\\",
+        r"\midrule",
+    ]
+    for name, cmp in stats.get("comparisons", {}).items():
+        p_adj = cmp.get("p_adjusted", cmp.get("p_value", 1.0))
+        p_str = f"< 0.001" if p_adj < 0.001 else f"{p_adj:.4f}"
+        d_val = cmp.get("cohens_d", cmp.get("d", 0))
+        lines.append(
+            f"vs {name} & {cmp.get('mean_diff', 0):.4f} & "
+            f"--- & {p_str} & {d_val:.3f} & {cmp['magnitude']} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}"]
+    out = o_dir / "table_statistics.tex"
+    out.write_text("\n".join(lines))
 
 
 if __name__ == "__main__":

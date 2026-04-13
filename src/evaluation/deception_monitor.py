@@ -188,6 +188,22 @@ class DeceptionMonitor:
             logger.debug("fetch_error", url=url, error=str(e))
         return None
 
+    def _compute_current_metrics(self) -> dict:
+        """Compute current deception metrics from accumulated state."""
+        effectiveness = self._protected_sessions / max(self._total_sessions, 1)
+        ghost_hit_rate = self._ghost_connections / max(self._total_connections, 1)
+        breadcrumb_follow_rate = self._breadcrumbs_taken / max(self._breadcrumbs_planted, 1)
+        if self._confusion_window:
+            avg_confusion = sum(v for _, v in self._confusion_window) / len(self._confusion_window)
+        else:
+            avg_confusion = 0.0
+        return {
+            "effectiveness": effectiveness,
+            "ghost_hit_rate": ghost_hit_rate,
+            "breadcrumb_follow_rate": breadcrumb_follow_rate,
+            "avg_confusion": avg_confusion,
+        }
+
     def _append_record(self, raw_data: dict) -> None:
         """
         [ROLE] 타임라인 JSONL에 레코드 추가.
@@ -195,22 +211,14 @@ class DeceptionMonitor:
         [DATA FLOW]
             raw_data ──▶ 효과 지표 계산 ──▶ JSONL 파일 추가
         """
-        effectiveness = self._protected_sessions / max(self._total_sessions, 1)
-        ghost_hit_rate = self._ghost_connections / max(self._total_connections, 1)
-        breadcrumb_follow_rate = self._breadcrumbs_taken / max(self._breadcrumbs_planted, 1)
-
-        # sliding window 평균 confusion
-        if self._confusion_window:
-            avg_confusion = sum(v for _, v in self._confusion_window) / len(self._confusion_window)
-        else:
-            avg_confusion = 0.0
+        m = self._compute_current_metrics()
 
         record = {
             "timestamp": time.time(),
-            "deception_effectiveness": round(effectiveness, 4),
-            "avg_confusion_score": round(avg_confusion, 4),
-            "ghost_service_hit_rate": round(ghost_hit_rate, 4),
-            "breadcrumb_follow_rate": round(breadcrumb_follow_rate, 4),
+            "deception_effectiveness": round(m["effectiveness"], 4),
+            "avg_confusion_score": round(m["avg_confusion"], 4),
+            "ghost_service_hit_rate": round(m["ghost_hit_rate"], 4),
+            "breadcrumb_follow_rate": round(m["breadcrumb_follow_rate"], 4),
             "total_sessions": self._total_sessions,
             "protected_sessions": self._protected_sessions,
             "total_connections": self._total_connections,
@@ -229,24 +237,17 @@ class DeceptionMonitor:
         [DATA FLOW]
             누적 지표 ──▶ 최종 DeceptionScore 계산 ──▶ stdout
         """
-        effectiveness = self._protected_sessions / max(self._total_sessions, 1)
-        ghost_hit = self._ghost_connections / max(self._total_connections, 1)
-        breadcrumb_rate = self._breadcrumbs_taken / max(self._breadcrumbs_planted, 1)
-
-        if self._confusion_window:
-            avg_confusion = sum(v for _, v in self._confusion_window) / len(self._confusion_window)
-        else:
-            avg_confusion = 0.0
+        m = self._compute_current_metrics()
 
         report = (
             "\n"
             "═══════════════════════════════════════════════\n"
             "  MIRAGE-UAS Deception Monitor — Final Report  \n"
             "═══════════════════════════════════════════════\n"
-            f"  Deception Effectiveness : {effectiveness:.1%}\n"
-            f"  Avg Confusion Score     : {avg_confusion:.3f}\n"
-            f"  Ghost Service Hit Rate  : {ghost_hit:.1%}\n"
-            f"  Breadcrumb Follow Rate  : {breadcrumb_rate:.1%}\n"
+            f"  Deception Effectiveness : {m['effectiveness']:.1%}\n"
+            f"  Avg Confusion Score     : {m['avg_confusion']:.3f}\n"
+            f"  Ghost Service Hit Rate  : {m['ghost_hit_rate']:.1%}\n"
+            f"  Breadcrumb Follow Rate  : {m['breadcrumb_follow_rate']:.1%}\n"
             f"  Total Sessions          : {self._total_sessions}\n"
             f"  Protected Sessions      : {self._protected_sessions}\n"
             "═══════════════════════════════════════════════\n"
@@ -254,10 +255,10 @@ class DeceptionMonitor:
         print(report)
         logger.info(
             "final_report",
-            deception_effectiveness=round(effectiveness, 4),
-            avg_confusion=round(avg_confusion, 4),
-            ghost_hit_rate=round(ghost_hit, 4),
-            breadcrumb_follow_rate=round(breadcrumb_rate, 4),
+            deception_effectiveness=round(m["effectiveness"], 4),
+            avg_confusion=round(m["avg_confusion"], 4),
+            ghost_hit_rate=round(m["ghost_hit_rate"], 4),
+            breadcrumb_follow_rate=round(m["breadcrumb_follow_rate"], 4),
         )
 
 
