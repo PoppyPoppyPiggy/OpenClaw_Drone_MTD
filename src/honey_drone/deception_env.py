@@ -553,3 +553,208 @@ class VecDeceptionEnv:
         obs[:, 8] = np.minimum(raw[:, self._TP] / 120.0, 1.0)
         obs[:, 9] = np.minimum(raw[:, self._EV] / 3.0, 1.0)
         return obs
+
+
+# ═══════════════════════════════════════════════════════════════
+# GPU-Native Vectorized Environment — zero CPU↔GPU transfer
+# ═══════════════════════════════════════════════════════════════
+
+try:
+    import torch as _torch
+    _HAS_TORCH = True
+except ImportError:
+    _HAS_TORCH = False
+
+
+class CudaVecDeceptionEnv:
+    """
+    GPU-native vectorized environment. All state, actions, rewards
+    live on CUDA — zero CPU↔GPU transfer during training.
+
+    Same dynamics as VecDeceptionEnv / DeceptionEnv.
+    """
+
+    _PH, _LV, _PR, _DW, _PK, _SV, _EX, _GH, _TP, _EV = range(10)
+    _SC = 10
+
+    def __init__(self, n_envs: int = 1024, max_steps: int = 200,
+                 device: str = "cuda") -> None:
+        assert _HAS_TORCH, "PyTorch required for CudaVecDeceptionEnv"
+        self.n_envs = n_envs
+        self.max_steps = max_steps
+        self.n_actions = N_ACTIONS_FLAT
+        self.device = _torch.device(device)
+        self._step_duration = 3.0
+
+        # Lookup tables on GPU
+        self._action_effect = _torch.tensor([
+            [ 0.04,  0.06,  0.01, -0.01,  0.02],
+            [ 0.01,  0.03,  0.03,  0.05,  0.07],
+            [ 0.05,  0.02,  0.03,  0.06,  0.04],
+            [-0.02, -0.01,  0.02,  0.04,  0.06],
+        ], device=self.device)
+        self._action_engage = _torch.tensor([
+            [0.70, 0.85, 0.30, 0.15, 0.40],
+            [0.30, 0.40, 0.50, 0.60, 0.85],
+            [0.50, 0.30, 0.40, 0.50, 0.55],
+            [0.15, 0.10, 0.25, 0.40, 0.75],
+        ], device=self.device)
+        self._action_evasion = _torch.tensor([
+            [0.01, 0.01, 0.04, 0.10, 0.02],
+            [0.03, 0.02, 0.05, 0.12, 0.04],
+            [0.02, 0.04, 0.06, 0.15, 0.03],
+            [0.06, 0.08, 0.08, 0.18, 0.04],
+        ], device=self.device)
+        self._intensity_effect = _torch.tensor([0.6, 1.0, 1.4], device=self.device)
+        self._intensity_engage = _torch.tensor([0.7, 1.0, 1.3], device=self.device)
+        self._intensity_evasion = _torch.tensor([0.4, 1.0, 2.2], device=self.device)
+        self._variant_effect = _torch.tensor([1.0, 1.15, 0.85], device=self.device)
+        self._variant_engage = _torch.tensor([1.0, 0.85, 1.15], device=self.device)
+        self._variant_evasion = _torch.tensor([1.0, 0.9, 1.1], device=self.device)
+
+        # Normalization divisors for _observe
+        self._obs_div = _torch.tensor(
+            [3.0, 4.0, 1.0, 600.0, 100.0, 10.0, 5.0, 5.0, 120.0, 3.0],
+            device=self.device,
+        )
+
+        # Internal state (N, 11)
+        self._raw = _torch.zeros(n_envs, 11, device=self.device)
+
+    def reset_all(self) -> _torch.Tensor:
+        """Reset all envs. Returns (N, 10) obs tensor on device."""
+        self._raw.zero_()
+        self._raw[:, self._LV] = _torch.randint(0, 3, (self.n_envs,),
+                                                  device=self.device).float()
+        self._raw[:, self._PR] = 0.7 + 0.05 * _torch.randn(self.n_envs,
+                                                              device=self.device)
+        return self._observe()
+
+    def _reset_idx(self, mask: _torch.Tensor) -> None:
+        """Auto-reset done envs."""
+        n = mask.sum().item()
+        if n == 0:
+            return
+        self._raw[mask] = 0.0
+        self._raw[mask, self._LV] = _torch.randint(0, 3, (n,),
+                                                     device=self.device).float()
+        self._raw[mask, self._PR] = 0.7 + 0.05 * _torch.randn(n, device=self.device)
+
+    def step(self, actions: _torch.Tensor):
+        """
+        GPU-native step. All tensors stay on device.
+
+        Args:
+            actions: (N,) long tensor on device, each in [0, 44]
+
+        Returns:
+            obs (N, 10), rewards (N,), dones (N, bool), info dict (tensors)
+        """
+        N = self.n_envs
+        raw = self._raw
+
+        raw[:, self._SC] += 1
+        raw[:, self._DW] += self._step_duration
+
+        phase = raw[:, self._PH].long().clamp(0, 3)
+
+        # Decode actions
+        base = actions // 9
+        remainder = actions % 9
+        intensity = remainder // 3
+        variant = remainder % 3
+
+        # Lookup — advanced indexing on GPU tensors
+        base_effect = self._action_effect[phase, base]
+        base_effect = (base_effect
+                       * self._intensity_effect[intensity]
+                       * self._variant_effect[variant])
+        engage_mult = self._intensity_engage[intensity] * self._variant_engage[variant]
+        evasion_mult = self._intensity_evasion[intensity] * self._variant_evasion[variant]
+
+        noise = 0.01 * _torch.randn(N, device=self.device)
+        delta_p = base_effect + noise
+
+        # Bayesian update
+        lr = _torch.where(delta_p > 0, 1.0 + delta_p * 10,
+                          (1.0 + delta_p * 10).clamp(min=0.1))
+        prior = raw[:, self._PR].clamp(0.01, 0.99)
+        raw[:, self._PR] = (lr * prior) / (lr * prior + (1 - prior))
+
+        # Engagement
+        engage_prob = (self._action_engage[phase, base] * engage_mult).clamp(max=0.98)
+        engaged = _torch.rand(N, device=self.device) < engage_prob
+        eng_f = engaged.float()
+        raw[:, self._PK] += (_torch.randint(1, 6, (N,), device=self.device).float()
+                             * eng_f)
+        raw[:, self._SV] += ((_torch.rand(N, device=self.device) < 0.3).float()
+                             * eng_f)
+
+        # Evasion
+        evasion_prob = (self._action_evasion[phase, base] * evasion_mult).clamp(max=0.5)
+        evasion_prob = _torch.where(raw[:, self._PR] < 0.5, evasion_prob * 2.0,
+                                    evasion_prob)
+        evasion_hit = _torch.rand(N, device=self.device) < evasion_prob
+        raw[:, self._EV] += evasion_hit.float()
+        p = raw[:, self._PR]
+        raw[:, self._PR] = _torch.where(
+            evasion_hit,
+            (0.3 * p) / (0.3 * p + (1 - p)),
+            p,
+        )
+
+        # Phase progression
+        raw[:, self._TP] += self._step_duration
+        phase_prob = 0.02 * (1 + raw[:, self._TP] / 30.0)
+        phase_advance = (_torch.rand(N, device=self.device) < phase_prob) & (raw[:, self._PH] < 3)
+        raw[:, self._PH] += phase_advance.float()
+        raw[:, self._TP] = _torch.where(phase_advance, _torch.zeros_like(raw[:, self._TP]),
+                                        raw[:, self._TP])
+        level_up = phase_advance & (raw[:, self._LV] < 4) & (
+            _torch.rand(N, device=self.device) < 0.3)
+        raw[:, self._LV] += level_up.float()
+
+        # Exploit attempts
+        raw[:, self._EX] += ((raw[:, self._PH] >= 1) & (
+            _torch.rand(N, device=self.device) < 0.1)).float()
+
+        # Ghost port
+        raw[:, self._GH] = _torch.where(base == 2,
+                                         (raw[:, self._GH] + 1).clamp(max=5),
+                                         raw[:, self._GH])
+
+        # Reward
+        r_belief = (delta_p * 8).clamp(-1.0, 1.0)
+        r_engage = eng_f
+        r_safety = _torch.where(raw[:, self._EV] > 0,
+                                -0.3 * (raw[:, self._EV] / 3.0).clamp(max=1.0),
+                                _torch.zeros(N, device=self.device))
+        rewards = 0.35 * r_belief + 0.25 * r_engage + 0.25 * 0.3 + 0.15 * r_safety
+
+        # Termination
+        done_preal = raw[:, self._PR] < 0.2
+        done_steps = raw[:, self._SC] >= self.max_steps
+        done_evasion = raw[:, self._EV] >= 5
+
+        rewards = _torch.where(done_preal, rewards - 5.0, rewards)
+        rewards = _torch.where(done_steps & ~done_preal,
+                               rewards + 3.0 + raw[:, self._PR] * 2.0, rewards)
+        rewards = _torch.where(done_evasion & ~done_preal & ~done_steps,
+                               rewards - 2.0, rewards)
+
+        dones = done_preal | done_steps | done_evasion
+
+        info = {
+            "p_real": raw[:, self._PR].clone(),
+            "engaged": engaged.clone(),
+            "evasion": raw[:, self._EV].clone(),
+        }
+
+        obs = self._observe()
+        self._reset_idx(dones)
+        return obs, rewards, dones, info
+
+    def _observe(self) -> _torch.Tensor:
+        """(N, 10) normalized obs, stays on device."""
+        raw = self._raw[:, :10]
+        return (raw / self._obs_div).clamp(max=1.0)

@@ -298,15 +298,17 @@ def train(
             idx_need = np.where(need_strategy)[0]
             n_need = len(idx_need)
 
-            # Epsilon-greedy strategy selection
+            # Single batched forward for all needing envs
+            with torch.no_grad():
+                s_t = torch.from_numpy(states[idx_need]).to(device)
+                q = policy_hdqn.meta(s_t)
+                greedy_strats = q.argmax(dim=1).cpu().numpy()
             rand_mask = np.random.random(n_need) < eps_val
-            if (~rand_mask).any():
-                with torch.no_grad():
-                    s_t = torch.from_numpy(states[idx_need[~rand_mask]]).to(device)
-                    q = policy_hdqn.meta(s_t)
-                    strategies[idx_need[~rand_mask]] = q.argmax(dim=1).cpu().numpy()
-            if rand_mask.any():
-                strategies[idx_need[rand_mask]] = np.random.randint(0, N_STRATEGIES, size=rand_mask.sum())
+            strategies[idx_need] = np.where(
+                rand_mask,
+                np.random.randint(0, N_STRATEGIES, size=n_need),
+                greedy_strats,
+            )
 
             for i in idx_need:
                 strategy_counts[strategies[i]] += 1
@@ -314,24 +316,20 @@ def train(
             strategy_cum_rewards[idx_need] = 0.0
             strategy_steps[idx_need] = 0
 
-        # ── Controller: select actions (batched) ──
+        # ── Controller: single batched forward for ALL envs ──
+        with torch.no_grad():
+            s_t = torch.from_numpy(states).to(device)
+            strat_oh = torch.zeros(n_envs, N_STRATEGIES, device=device)
+            strat_idx = torch.from_numpy(strategies.clip(0).astype(np.int64)).to(device)
+            strat_oh.scatter_(1, strat_idx.unsqueeze(1), 1.0)
+            ctrl_input = torch.cat([s_t, strat_oh], dim=1)
+            q = policy_hdqn.controller(ctrl_input)
+            greedy_actions = q.argmax(dim=1).cpu().numpy()
+        # Epsilon-greedy
         rand_mask = np.random.random(n_envs) < eps_val
-        actions = np.zeros(n_envs, dtype=np.int32)
-
-        if (~rand_mask).any():
-            greedy_idx = np.where(~rand_mask)[0]
-            with torch.no_grad():
-                s_t = torch.from_numpy(states[greedy_idx]).to(device)
-                # Build per-env strategy one-hot
-                strat_onehot = torch.zeros(len(greedy_idx), N_STRATEGIES, device=device)
-                strat_idx = torch.from_numpy(strategies[greedy_idx].astype(np.int64)).to(device)
-                strat_onehot.scatter_(1, strat_idx.unsqueeze(1), 1.0)
-                ctrl_input = torch.cat([s_t, strat_onehot], dim=1)
-                q = policy_hdqn.controller(ctrl_input)
-                actions[greedy_idx] = q.argmax(dim=1).cpu().numpy()
-
-        if rand_mask.any():
-            actions[rand_mask] = np.random.randint(0, N_ACTIONS_FLAT, size=rand_mask.sum())
+        actions = np.where(rand_mask,
+                           np.random.randint(0, N_ACTIONS_FLAT, size=n_envs),
+                           greedy_actions).astype(np.int32)
 
         # ── Step all envs ──
         next_states, extrinsic_rewards, dones, info = env.step(actions)
