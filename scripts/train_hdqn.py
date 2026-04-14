@@ -107,69 +107,92 @@ class TensorReplayBuffer:
 # Vectorized Intrinsic Reward
 # ═══════════════════════════════════════════════════════════════
 
-# Intrinsic reward coefficient table: (N_STRATEGIES, 5)
-# columns: engaged_pos, engaged_neg, delta_p_scale, evasion_pen, engaged_base
-_INTR_TABLE = np.array([
-    # aggressive_engage
-    [0.8,  -0.24,  1.0,   0.0,   0.0],
-    # passive_monitor
-    [0.0,   0.0,   2.5,  -0.5,   0.0],
-    # identity_shift
-    [0.0,   0.0,   3.0,   0.0,   0.12],
-    # service_expansion
-    [0.7,   0.0,   0.9,   0.0,   0.0],
-    # credential_leak
-    [0.0,   0.0,   4.0,   0.0,   0.25],
-    # adaptive_response
-    [0.3,   0.0,   2.0,  -0.15,  0.0],
+# ── Controller intrinsic reward: strongly strategy-differentiated ──
+
+def intrinsic_reward_vec(
+    strategies, p_real, prev_p_real, engaged, evasion, phase, base_action,
+):
+    """Per-step intrinsic reward with STRONG strategy differentiation."""
+    N = len(strategies)
+    delta_p = p_real - prev_p_real
+    eng = engaged.astype(np.float32)
+    eva = (evasion > 0).astype(np.float32)
+    r = np.zeros(N, dtype=np.float32)
+
+    for s in range(N_STRATEGIES):
+        m = strategies == s
+        if not m.any():
+            continue
+        if s == 0:    # aggressive_engage — maximize engagement
+            r[m] = 1.0 * eng[m] - 0.5 * (1 - eng[m]) + 0.3 * delta_p[m] * 5
+        elif s == 1:  # passive_monitor — maintain belief, ZERO evasion
+            r[m] = 0.5 * np.clip(delta_p[m] * 10, -1, 1) - 1.5 * eva[m] + 0.3
+        elif s == 2:  # identity_shift — use statustext/reboot for p_real jumps
+            act_match = ((base_action[m] == 0) | (base_action[m] == 3)).astype(np.float32)
+            r[m] = 0.8 * np.clip(delta_p[m] * 8, -1, 1) + 0.5 * act_match - 0.3 * eva[m]
+        elif s == 3:  # service_expansion — use ghost_port
+            ghost = (base_action[m] == 2).astype(np.float32)
+            r[m] = 0.6 * eng[m] + 0.8 * ghost + 0.2 * delta_p[m] * 5
+        elif s == 4:  # credential_leak — use fake_key + engagement
+            key = (base_action[m] == 4).astype(np.float32)
+            r[m] = 1.0 * key * eng[m] + 0.5 * delta_p[m] * 8 - 0.3 * eva[m]
+        elif s == 5:  # adaptive_response — match phase-optimal action
+            optimal = np.array([1, 4, 0, 4])[np.clip(phase[m], 0, 3)]
+            phase_match = (base_action[m] == optimal).astype(np.float32)
+            r[m] = 0.8 * phase_match + 0.3 * eng[m] - 0.5 * eva[m]
+    return np.clip(r, -1.5, 1.5)
+
+
+# ── Meta reward: phase-strategy matching + strategy effectiveness ──
+# This is what teaches MetaController WHEN to use each strategy
+
+_PHASE_STRAT_BONUS = np.array([
+    # aggr  pass  ident  serv   cred   adapt
+    [ 0.8,  0.3, -0.2,  0.5,  -0.3,   0.4],  # RECON
+    [ 0.2,  0.1,  0.3,  0.4,   0.8,   0.6],  # EXPLOIT
+    [ 0.3,  0.6,  0.7,  0.2,   0.4,   0.5],  # PERSIST
+    [-0.3,  0.5,  0.5, -0.2,   0.7,   0.8],  # EXFIL
 ], dtype=np.float32)
 
 
-def intrinsic_reward_vec(
-    strategies: np.ndarray,   # (N,) int
-    p_real: np.ndarray,       # (N,)
-    prev_p_real: np.ndarray,  # (N,)
-    engaged: np.ndarray,      # (N,) bool
-    evasion: np.ndarray,      # (N,) float
-) -> np.ndarray:
-    """Vectorized intrinsic reward for N envs."""
-    delta_p = p_real - prev_p_real
-    coeffs = _INTR_TABLE[strategies]  # (N, 5)
+def meta_strategy_reward(
+    strategies, cum_extrinsic, cum_intrinsic,
+    start_p_real, end_p_real, phase_at_start,
+    engaged_count, evasion_count, window_len,
+):
+    """Meta reward = phase-strategy match + effectiveness + small extrinsic."""
+    N = len(strategies)
+    wl = np.maximum(window_len, 1).astype(np.float32)
 
-    r = np.zeros(len(strategies), dtype=np.float32)
-    eng = engaged.astype(np.float32)
-    r += coeffs[:, 0] * eng              # engaged positive
-    r += coeffs[:, 1] * (1 - eng)        # engaged negative (for aggressive)
-    r += coeffs[:, 2] * delta_p          # delta_p scale
-    r += coeffs[:, 3] * (evasion > 0).astype(np.float32)  # evasion penalty
-    r += coeffs[:, 4] * eng              # engaged base (for identity/cred)
-    return np.clip(r, -1.0, 1.0)
+    # 1. Phase-strategy matching bonus (THE KEY SIGNAL)
+    phase_bonus = _PHASE_STRAT_BONUS[np.clip(phase_at_start, 0, 3), strategies]
 
+    # 2. Strategy-specific effectiveness
+    delta_p = end_p_real - start_p_real
+    engage_rate = engaged_count / wl
+    evasion_rate = evasion_count / wl
+    eff = np.zeros(N, dtype=np.float32)
+    for s in range(N_STRATEGIES):
+        m = strategies == s
+        if not m.any():
+            continue
+        if s == 0:
+            eff[m] = engage_rate[m] * 2 - 0.5
+        elif s == 1:
+            eff[m] = (1 - evasion_rate[m]) + np.clip(delta_p[m] * 3, -0.5, 0.5)
+        elif s == 2:
+            eff[m] = np.clip(delta_p[m] * 5, -1, 1)
+        elif s == 3:
+            eff[m] = engage_rate[m] - evasion_rate[m] * 2
+        elif s == 4:
+            eff[m] = np.clip(delta_p[m] * 6, -1, 1) + engage_rate[m] * 0.5
+        elif s == 5:
+            eff[m] = np.clip(delta_p[m] * 3, -0.5, 0.5) + engage_rate[m] * 0.5 - evasion_rate[m]
 
-# ═══════════════════════════════════════════════════════════════
-# Running Reward Normalizer
-# ═══════════════════════════════════════════════════════════════
+    # 3. Small extrinsic (not dominant)
+    extr = np.clip(cum_extrinsic / wl, -1, 1) * 0.3
 
-class RewardNormalizer:
-    """Welford online mean/std for reward normalization."""
-
-    def __init__(self, clip: float = 5.0):
-        self.clip = clip
-        self.mean = 0.0
-        self.var = 1.0
-        self.count = 0
-
-    def update(self, rewards: np.ndarray) -> None:
-        for r in rewards.flat:
-            self.count += 1
-            delta = r - self.mean
-            self.mean += delta / self.count
-            delta2 = r - self.mean
-            self.var += (delta * delta2 - self.var) / self.count
-
-    def normalize(self, rewards: np.ndarray) -> np.ndarray:
-        std = max(np.sqrt(self.var), 1e-6)
-        return np.clip((rewards - self.mean) / std, -self.clip, self.clip).astype(np.float32)
+    return np.clip(1.0 * phase_bonus + 0.7 * eff + 0.3 * extr, -3.0, 3.0)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -242,7 +265,6 @@ def train(
 
     ctrl_replay = TensorReplayBuffer(2_000_000, CONTROLLER_INPUT_DIM, device)
     meta_replay = TensorReplayBuffer(2_000_000, STATE_DIM, device)
-    meta_reward_norm = RewardNormalizer(clip=5.0)
 
     # Per-env tracking
     strategies = np.full(n_envs, -1, dtype=np.int32)
@@ -252,6 +274,12 @@ def train(
     env_rewards = np.zeros(n_envs, dtype=np.float32)
     env_lengths = np.zeros(n_envs, dtype=np.int32)
     prev_p_real = np.full(n_envs, 0.7, dtype=np.float32)
+    # Per-strategy-window tracking for meta reward
+    strat_start_p_real = np.full(n_envs, 0.7, dtype=np.float32)
+    strat_start_phase = np.zeros(n_envs, dtype=np.int32)
+    strat_engaged_count = np.zeros(n_envs, dtype=np.float32)
+    strat_evasion_count = np.zeros(n_envs, dtype=np.float32)
+    strat_cum_intrinsic = np.zeros(n_envs, dtype=np.float32)
 
     # Logging
     completed_rewards = []
@@ -268,6 +296,8 @@ def train(
 
     # Init
     states = env.reset_all()
+    prev_evasion = np.zeros(n_envs, dtype=np.float32)
+    info_prev_p = np.full(n_envs, 0.7, dtype=np.float32)
     t0 = time.time()
     log_interval = 1000  # log every N global steps
     last_log_step = 0
@@ -283,16 +313,21 @@ def train(
             # Store meta transitions for envs that had a previous strategy
             had_prev = need_strategy & (strategies >= 0)
             if had_prev.any():
-                idx_prev = np.where(had_prev)[0]
-                raw_meta_r = strategy_cum_rewards[idx_prev]
-                meta_reward_norm.update(raw_meta_r)
-                norm_meta_r = meta_reward_norm.normalize(raw_meta_r)
+                idx = np.where(had_prev)[0]
+                m_reward = meta_strategy_reward(
+                    strategies[idx], strategy_cum_rewards[idx],
+                    strat_cum_intrinsic[idx],
+                    strat_start_p_real[idx], info_prev_p[idx],
+                    strat_start_phase[idx],
+                    strat_engaged_count[idx], strat_evasion_count[idx],
+                    strategy_steps[idx].astype(np.float32),
+                )
                 meta_replay.push_batch(
-                    torch.from_numpy(strategy_start_states[idx_prev]).to(device),
-                    torch.from_numpy(strategies[idx_prev].astype(np.int64)).to(device),
-                    torch.from_numpy(norm_meta_r).to(device),
-                    torch.from_numpy(states[idx_prev]).to(device),
-                    torch.zeros(len(idx_prev), dtype=torch.bool, device=device),
+                    torch.from_numpy(strategy_start_states[idx]).to(device),
+                    torch.from_numpy(strategies[idx].astype(np.int64)).to(device),
+                    torch.from_numpy(m_reward).to(device),
+                    torch.from_numpy(states[idx]).to(device),
+                    torch.zeros(len(idx), dtype=torch.bool, device=device),
                 )
 
             idx_need = np.where(need_strategy)[0]
@@ -315,6 +350,15 @@ def train(
             strategy_start_states[idx_need] = states[idx_need]
             strategy_cum_rewards[idx_need] = 0.0
             strategy_steps[idx_need] = 0
+            strat_start_p_real[idx_need] = prev_p_real[idx_need]
+            # Extract phase from 64-dim state (one-hot in dims 0-3)
+            if states.shape[1] > 10:
+                strat_start_phase[idx_need] = np.argmax(states[idx_need, :4], axis=1)
+            else:
+                strat_start_phase[idx_need] = np.round(states[idx_need, 0] * 3).astype(np.int32)
+            strat_engaged_count[idx_need] = 0.0
+            strat_evasion_count[idx_need] = 0.0
+            strat_cum_intrinsic[idx_need] = 0.0
 
         # ── Controller: single batched forward for ALL envs ──
         with torch.no_grad():
@@ -334,10 +378,18 @@ def train(
         # ── Step all envs ──
         next_states, extrinsic_rewards, dones, info = env.step(actions)
 
-        # Intrinsic reward
+        # Extract phase from state
+        if states.shape[1] > 10:
+            cur_phase = np.argmax(states[:, :4], axis=1).astype(np.int32)
+        else:
+            cur_phase = np.round(states[:, 0] * 3).astype(np.int32)
+        base_actions = actions // 9
+
+        # Intrinsic reward (strategy-differentiated)
         intr = intrinsic_reward_vec(
             strategies, info["p_real"], prev_p_real,
             info["engaged"], info["evasion"],
+            cur_phase, base_actions,
         )
         ctrl_rewards = 0.5 * extrinsic_rewards + 0.5 * intr
 
@@ -357,8 +409,13 @@ def train(
 
         strategy_cum_rewards += extrinsic_rewards
         strategy_steps += 1
+        strat_engaged_count += info["engaged"].astype(np.float32)
+        strat_evasion_count += (info["evasion"] > prev_evasion).astype(np.float32) if 'prev_evasion' in dir() else 0
+        strat_cum_intrinsic += intr
         env_rewards += extrinsic_rewards
         env_lengths += 1
+        info_prev_p = info["p_real"].copy()
+        prev_evasion = info["evasion"].copy()
         prev_p_real = info["p_real"].copy()
 
         # ── Handle episode completions ──
@@ -368,13 +425,18 @@ def train(
             valid_done = dones & (strategies >= 0)
             if valid_done.any():
                 idx_d = np.where(valid_done)[0]
-                raw_meta_r = strategy_cum_rewards[idx_d]
-                meta_reward_norm.update(raw_meta_r)
-                norm_meta_r = meta_reward_norm.normalize(raw_meta_r)
+                m_reward = meta_strategy_reward(
+                    strategies[idx_d], strategy_cum_rewards[idx_d],
+                    strat_cum_intrinsic[idx_d],
+                    strat_start_p_real[idx_d], info["p_real"][idx_d],
+                    strat_start_phase[idx_d],
+                    strat_engaged_count[idx_d], strat_evasion_count[idx_d],
+                    strategy_steps[idx_d].astype(np.float32),
+                )
                 meta_replay.push_batch(
                     torch.from_numpy(strategy_start_states[idx_d]).to(device),
                     torch.from_numpy(strategies[idx_d].astype(np.int64)).to(device),
-                    torch.from_numpy(norm_meta_r).to(device),
+                    torch.from_numpy(m_reward).to(device),
                     torch.from_numpy(next_states[idx_d]).to(device),
                     torch.ones(len(idx_d), dtype=torch.bool, device=device),
                 )
@@ -386,6 +448,10 @@ def train(
             strategies[done_idx] = -1
             strategy_steps[done_idx] = 0
             strategy_cum_rewards[done_idx] = 0.0
+            strat_engaged_count[done_idx] = 0.0
+            strat_evasion_count[done_idx] = 0.0
+            strat_cum_intrinsic[done_idx] = 0.0
+            prev_evasion[done_idx] = 0.0
             env_rewards[done_idx] = 0.0
             env_lengths[done_idx] = 0
             prev_p_real[done_idx] = 0.7
