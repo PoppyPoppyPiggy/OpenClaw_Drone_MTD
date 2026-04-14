@@ -356,3 +356,200 @@ class DeceptionEnv:
             min(s.time_in_phase / 120.0, 1.0),
             min(s.evasion_signals / 3.0, 1.0),
         ], dtype=np.float32)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Vectorized Environment — N parallel envs, pure numpy
+# ═══════════════════════════════════════════════════════════════
+
+class VecDeceptionEnv:
+    """
+    Vectorized DeceptionEnv: runs N environments simultaneously.
+    All operations are batched numpy — no Python loops per step.
+
+    State layout (N, 10): same as DeceptionEnv.
+    Internal state (N, 10): phase, level, p_real, dwell, packets,
+                            services, exploits, ghost, time_in_phase, evasion
+    """
+
+    # Column indices for internal raw state
+    _PH, _LV, _PR, _DW, _PK, _SV, _EX, _GH, _TP, _EV = range(10)
+    _SC = 10  # step_count lives in extra column
+
+    def __init__(self, n_envs: int = 256, max_steps: int = 200) -> None:
+        self.n_envs = n_envs
+        self.max_steps = max_steps
+        self.n_actions = N_ACTIONS_FLAT
+        self._step_duration = 3.0
+
+        # Matrices (same as DeceptionEnv)
+        self._action_effect = np.array([
+            [ 0.04,  0.06,  0.01, -0.01,  0.02],
+            [ 0.01,  0.03,  0.03,  0.05,  0.07],
+            [ 0.05,  0.02,  0.03,  0.06,  0.04],
+            [-0.02, -0.01,  0.02,  0.04,  0.06],
+        ], dtype=np.float32)
+        self._action_engage = np.array([
+            [0.70, 0.85, 0.30, 0.15, 0.40],
+            [0.30, 0.40, 0.50, 0.60, 0.85],
+            [0.50, 0.30, 0.40, 0.50, 0.55],
+            [0.15, 0.10, 0.25, 0.40, 0.75],
+        ], dtype=np.float32)
+        self._action_evasion = np.array([
+            [0.01, 0.01, 0.04, 0.10, 0.02],
+            [0.03, 0.02, 0.05, 0.12, 0.04],
+            [0.02, 0.04, 0.06, 0.15, 0.03],
+            [0.06, 0.08, 0.08, 0.18, 0.04],
+        ], dtype=np.float32)
+        self._intensity_effect = np.array([0.6, 1.0, 1.4], dtype=np.float32)
+        self._intensity_engage = np.array([0.7, 1.0, 1.3], dtype=np.float32)
+        self._intensity_evasion = np.array([0.4, 1.0, 2.2], dtype=np.float32)
+        self._variant_mods = np.array([
+            [1.0, 1.0, 1.0], [1.15, 0.85, 0.9], [0.85, 1.15, 1.1],
+        ], dtype=np.float32)
+
+        # Internal raw state: (N, 11) — 10 state dims + step_count
+        self._raw = np.zeros((n_envs, 11), dtype=np.float32)
+        self._rng = np.random.default_rng()
+
+    def reset_all(self) -> np.ndarray:
+        """Reset all N environments. Returns (N, 10) observations."""
+        self._raw[:] = 0.0
+        self._raw[:, self._LV] = self._rng.integers(0, 3, size=self.n_envs).astype(np.float32)
+        self._raw[:, self._PR] = 0.7 + self._rng.normal(0, 0.05, size=self.n_envs).astype(np.float32)
+        return self._observe()
+
+    def _reset_idx(self, mask: np.ndarray) -> None:
+        """Reset environments where mask is True (auto-reset)."""
+        n = mask.sum()
+        if n == 0:
+            return
+        self._raw[mask] = 0.0
+        self._raw[mask, self._LV] = self._rng.integers(0, 3, size=n).astype(np.float32)
+        self._raw[mask, self._PR] = (0.7 + self._rng.normal(0, 0.05, size=n)).astype(np.float32)
+
+    def step(self, actions: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+        """
+        Vectorized step for all N envs.
+
+        Args:
+            actions: (N,) int array, each in [0, 44]
+
+        Returns:
+            obs (N, 10), rewards (N,), dones (N,), info dict
+        """
+        N = self.n_envs
+        raw = self._raw
+        rng = self._rng
+
+        raw[:, self._SC] += 1
+        raw[:, self._DW] += self._step_duration
+        phase = np.clip(raw[:, self._PH].astype(np.int32), 0, 3)
+
+        # Decode actions → (N,) base, intensity, variant
+        base = actions // 9
+        remainder = actions % 9
+        intensity = remainder // 3
+        variant = remainder % 3
+
+        # Gather per-env values from matrices using advanced indexing
+        base_effect = self._action_effect[phase, base]
+        base_effect = base_effect * self._intensity_effect[intensity] * self._variant_mods[variant, 0]
+        engage_mult = self._intensity_engage[intensity] * self._variant_mods[variant, 1]
+        evasion_mult = self._intensity_evasion[intensity] * self._variant_mods[variant, 2]
+
+        noise = rng.normal(0, 0.01, size=N).astype(np.float32)
+        delta_p = base_effect + noise
+
+        # Bayesian update
+        lr = np.where(delta_p > 0, 1.0 + delta_p * 10, np.maximum(0.1, 1.0 + delta_p * 10))
+        prior = np.clip(raw[:, self._PR], 0.01, 0.99)
+        raw[:, self._PR] = (lr * prior) / (lr * prior + 1.0 * (1 - prior))
+
+        # Engagement
+        engage_prob = np.minimum(self._action_engage[phase, base] * engage_mult, 0.98)
+        engaged = rng.random(N) < engage_prob
+        new_pkts = rng.integers(1, 6, size=N) * engaged
+        raw[:, self._PK] += new_pkts
+        raw[:, self._SV] += (rng.random(N) < 0.3).astype(np.float32) * engaged
+
+        # Evasion
+        evasion_prob = np.minimum(self._action_evasion[phase, base] * evasion_mult, 0.5)
+        evasion_prob = np.where(raw[:, self._PR] < 0.5, evasion_prob * 2.0, evasion_prob)
+        evasion_hit = rng.random(N) < evasion_prob
+        raw[:, self._EV] += evasion_hit.astype(np.float32)
+        # Bayesian evasion update
+        p = raw[:, self._PR]
+        raw[:, self._PR] = np.where(
+            evasion_hit,
+            (0.3 * p) / (0.3 * p + 1.0 * (1 - p)),
+            p,
+        )
+
+        # Phase progression
+        raw[:, self._TP] += self._step_duration
+        phase_prob = 0.02 * (1 + raw[:, self._TP] / 30.0)
+        phase_advance = (rng.random(N) < phase_prob) & (raw[:, self._PH] < 3)
+        raw[:, self._PH] += phase_advance.astype(np.float32)
+        raw[:, self._TP] = np.where(phase_advance, 0.0, raw[:, self._TP])
+        level_up = phase_advance & (raw[:, self._LV] < 4) & (rng.random(N) < 0.3)
+        raw[:, self._LV] += level_up.astype(np.float32)
+
+        # Exploit attempts
+        raw[:, self._EX] += ((raw[:, self._PH] >= 1) & (rng.random(N) < 0.1)).astype(np.float32)
+
+        # Ghost port tracking
+        ghost_mask = base == 2
+        raw[:, self._GH] = np.where(ghost_mask, np.minimum(raw[:, self._GH] + 1, 5), raw[:, self._GH])
+
+        # Reward
+        r_belief = np.clip(delta_p * 8, -1.0, 1.0)
+        r_engage = engaged.astype(np.float32)
+        r_dwell = np.full(N, 0.3, dtype=np.float32)
+        r_safety = np.where(
+            raw[:, self._EV] > 0,
+            -0.3 * np.minimum(raw[:, self._EV] / 3.0, 1.0),
+            0.0,
+        )
+        rewards = 0.35 * r_belief + 0.25 * r_engage + 0.25 * r_dwell + 0.15 * r_safety
+
+        # Termination
+        done_preal = raw[:, self._PR] < 0.2
+        done_steps = raw[:, self._SC] >= self.max_steps
+        done_evasion = raw[:, self._EV] >= 5
+
+        rewards = np.where(done_preal, rewards - 5.0, rewards)
+        rewards = np.where(done_steps & ~done_preal, rewards + 3.0 + raw[:, self._PR] * 2.0, rewards)
+        rewards = np.where(done_evasion & ~done_preal & ~done_steps, rewards - 2.0, rewards)
+
+        dones = done_preal | done_steps | done_evasion
+
+        info = {
+            "p_real": raw[:, self._PR].copy(),
+            "engaged": engaged.copy(),
+            "evasion": raw[:, self._EV].copy(),
+            "dones": dones.copy(),
+        }
+
+        obs = self._observe()
+
+        # Auto-reset done envs
+        self._reset_idx(dones)
+
+        return obs, rewards, dones, info
+
+    def _observe(self) -> np.ndarray:
+        """Return (N, 10) normalized observations."""
+        raw = self._raw
+        obs = np.empty((self.n_envs, STATE_DIM), dtype=np.float32)
+        obs[:, 0] = raw[:, self._PH] / 3.0
+        obs[:, 1] = raw[:, self._LV] / 4.0
+        obs[:, 2] = raw[:, self._PR]
+        obs[:, 3] = np.minimum(raw[:, self._DW] / 600.0, 1.0)
+        obs[:, 4] = np.minimum(raw[:, self._PK] / 100.0, 1.0)
+        obs[:, 5] = np.minimum(raw[:, self._SV] / 10.0, 1.0)
+        obs[:, 6] = np.minimum(raw[:, self._EX] / 5.0, 1.0)
+        obs[:, 7] = np.minimum(raw[:, self._GH] / 5.0, 1.0)
+        obs[:, 8] = np.minimum(raw[:, self._TP] / 120.0, 1.0)
+        obs[:, 9] = np.minimum(raw[:, self._EV] / 3.0, 1.0)
+        return obs
