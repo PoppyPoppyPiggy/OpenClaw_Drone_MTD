@@ -58,19 +58,26 @@ class DQNPolicy:
     """DQN-trained policy — loaded from checkpoint."""
     name = "DQN"
     def __init__(self, model_path: str, device: str = "cuda"):
-        # Import DQN from train_dqn (same directory)
         import importlib.util
         spec = importlib.util.spec_from_file_location("train_dqn", Path(__file__).parent / "train_dqn.py")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         DQN = mod.DQN
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.net = DQN(STATE_DIM, N_ACTIONS).to(self.device)
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
+        # Auto-detect state_dim from checkpoint
+        ckpt_state_dim = ckpt["policy_state_dict"]["feature.0.weight"].shape[1]
+        self._state_dim = ckpt_state_dim
+        self.net = DQN(ckpt_state_dim, N_ACTIONS).to(self.device)
         self.net.load_state_dict(ckpt["policy_state_dict"])
         self.net.eval()
         self._train_ep = ckpt.get("episode", "?")
         self._train_reward = ckpt.get("avg_reward", "?")
+
+    @property
+    def uses_legacy_env(self):
+        """DQN was trained on 10-dim state, needs legacy env."""
+        return self._state_dim == 10
 
     def select(self, state: np.ndarray) -> int:
         with torch.no_grad():
@@ -126,13 +133,147 @@ class HDQNPolicy:
 # Evaluation
 # ═══════════════════════════════════════════════════════════════
 
+def _evaluate_hdqn_vec(policy, n_episodes: int, seed: int = 42):
+    """Evaluate h-DQN using VecDeceptionEnv (64-dim state)."""
+    from honey_drone.deception_env import VecDeceptionEnv, N_BASE_ACTIONS, decode_action
+    np.random.seed(seed)
+
+    n_envs = min(n_episodes, 512)
+    env = VecDeceptionEnv(n_envs=n_envs, max_steps=200)
+    states = env.reset_all()
+
+    strats = np.full(n_envs, -1, dtype=np.int32)
+    strat_steps = np.zeros(n_envs, dtype=np.int32)
+    horizon = 10
+    env_rewards = np.zeros(n_envs, dtype=np.float32)
+    env_lengths = np.zeros(n_envs, dtype=np.int32)
+    done_mask = np.zeros(n_envs, dtype=bool)
+
+    rewards_all = []
+    lengths_all = []
+    p_reals_all = []
+    survivals_all = []
+    action_counts = np.zeros(N_ACTIONS)
+    phase_actions = {p: np.zeros(N_ACTIONS) for p in range(4)}
+    device = policy.device
+
+    while len(rewards_all) < n_episodes:
+        # Strategy selection
+        need = (strats < 0) | (strat_steps >= horizon)
+        idx = np.where(need & ~done_mask)[0]
+        if len(idx) > 0:
+            with torch.no_grad():
+                s_t = torch.from_numpy(states[idx]).to(device)
+                strats[idx] = policy.hdqn.meta(s_t).argmax(dim=1).cpu().numpy()
+            strat_steps[idx] = 0
+
+        # Action selection
+        active = np.where(~done_mask)[0]
+        if len(active) == 0:
+            # Reset all for next batch
+            states = env.reset_all()
+            strats[:] = -1
+            strat_steps[:] = 0
+            env_rewards[:] = 0
+            env_lengths[:] = 0
+            done_mask[:] = False
+            continue
+
+        actions = np.zeros(n_envs, dtype=np.int32)
+        with torch.no_grad():
+            s_t = torch.from_numpy(states[active]).to(device)
+            from honey_drone.hierarchical_agent import N_STRATEGIES
+            oh = torch.zeros(len(active), N_STRATEGIES, device=device)
+            si = torch.from_numpy(strats[active].clip(0).astype(np.int64)).to(device)
+            oh.scatter_(1, si.unsqueeze(1), 1.0)
+            ci = torch.cat([s_t, oh], dim=1)
+            actions[active] = policy.hdqn.controller(ci).argmax(dim=1).cpu().numpy()
+
+        for i in active:
+            base = actions[i] // 9
+            action_counts[base] += 1
+            phase = int(round(states[i][0] * 3)) if states.shape[1] <= 10 else 0
+            # For 64-dim state, phase is one-hot in dims 0-3
+            if states.shape[1] > 10:
+                phase = int(np.argmax(states[i][:4]))
+            phase_actions[phase][base] += 1
+
+        next_states, r, dones, info = env.step(actions)
+        env_rewards += r * (~done_mask)
+        env_lengths += (~done_mask).astype(np.int32)
+        strat_steps += 1
+        states = next_states
+
+        newly_done = dones & ~done_mask
+        if newly_done.any():
+            idx_d = np.where(newly_done)[0]
+            for i in idx_d:
+                rewards_all.append(env_rewards[i])
+                lengths_all.append(env_lengths[i])
+                p_reals_all.append(info["p_real"][i])
+                survivals_all.append(env_lengths[i] >= 200)
+            done_mask |= dones
+
+            if len(rewards_all) >= n_episodes:
+                break
+
+        # If all done, reset batch
+        if done_mask.all():
+            states = env.reset_all()
+            strats[:] = -1
+            strat_steps[:] = 0
+            env_rewards[:] = 0
+            env_lengths[:] = 0
+            done_mask[:] = False
+
+    rewards_all = rewards_all[:n_episodes]
+    lengths_all = lengths_all[:n_episodes]
+    p_reals_all = p_reals_all[:n_episodes]
+    survivals_all = survivals_all[:n_episodes]
+
+    total_acts = max(action_counts.sum(), 1)
+    tp = sum(1 for r in rewards_all if r >= 40)
+    fp = sum(1 for r in rewards_all if 10 <= r < 40)
+    fn = sum(1 for r in rewards_all if r < 10)
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+
+    return {
+        "policy": "h-DQN",
+        "episodes": len(rewards_all),
+        "avg_reward": round(float(np.mean(rewards_all)), 4),
+        "std_reward": round(float(np.std(rewards_all)), 4),
+        "avg_length": round(float(np.mean(lengths_all)), 1),
+        "avg_p_real": round(float(np.mean(p_reals_all)), 4),
+        "survival_rate": round(float(np.mean(survivals_all)), 4),
+        "f1": round(f1, 4),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "tp": tp, "fp": fp, "fn": fn,
+        "action_distribution": {
+            ACTION_NAMES[i]: round(action_counts[i] / total_acts * 100, 1)
+            for i in range(N_ACTIONS)
+        },
+        "phase_preference": {
+            f"phase_{p}": ACTION_NAMES[int(phase_actions[p].argmax())]
+            for p in range(4)
+        },
+        "rewards_raw": [round(r, 2) for r in rewards_all],
+    }
+
 def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
     """Run n_episodes and collect metrics."""
     np.random.seed(seed)
 
-    # h-DQN uses param-mode env (45 actions with intensity/variant)
     use_param = getattr(policy, "uses_param_env", False)
-    if use_param:
+    use_legacy = getattr(policy, "uses_legacy_env", False)
+
+    if use_param and not use_legacy:
+        # h-DQN with 64-dim state — use VecDeceptionEnv for correct state dim
+        from honey_drone.deception_env import VecDeceptionEnv
+        return _evaluate_hdqn_vec(policy, n_episodes, seed)
+    elif use_param:
         eval_env = DeceptionEnv(max_steps=env.max_steps, action_mode="param")
     else:
         eval_env = env
