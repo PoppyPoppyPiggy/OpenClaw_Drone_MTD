@@ -78,22 +78,38 @@ class DQNPolicy:
             return self.net(t).argmax(dim=1).item()
 
 
-class FullAgentPolicy:
-    """DQN + ε-exploration with phase-aware diversity."""
-    name = "Full Agent"
+class HDQNPolicy:
+    """Hierarchical DQN — MetaController + Controller on 45 parameterized actions."""
+    name = "h-DQN"
     def __init__(self, model_path: str, device: str = "cuda"):
-        self._dqn = DQNPolicy(model_path, device)
-        self._step = 0
+        from honey_drone.hierarchical_agent import HierarchicalDQN, N_STRATEGIES
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.hdqn = HierarchicalDQN().to(self.device)
+        ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
+        self.hdqn.meta.load_state_dict(ckpt["meta_state_dict"])
+        self.hdqn.controller.load_state_dict(ckpt["controller_state_dict"])
+        self.hdqn.eval()
+        self._strategy = None
+        self._strategy_steps = 0
+        self._horizon = 10
+        self._train_ep = ckpt.get("episode", "?")
 
     def select(self, state: np.ndarray) -> int:
-        self._step += 1
-        # 90% DQN, 10% phase-aware exploration (not random, strategic)
-        if np.random.random() < 0.1:
-            phase = int(round(state[0] * 3))
-            # Explore the second-best action per phase for diversity
-            explore_map = {0: 0, 1: 3, 2: 0, 3: 3}  # statustext/reboot
-            return explore_map.get(phase, 0)
-        return self._dqn.select(state)
+        """Returns flat 45-action index. Caller must use param-mode env."""
+        self._strategy_steps += 1
+        if self._strategy is None or self._strategy_steps >= self._horizon:
+            with torch.no_grad():
+                s_t = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+                self._strategy = self.hdqn.meta(s_t).argmax(dim=1).item()
+            self._strategy_steps = 0
+        with torch.no_grad():
+            s_t = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+            action_q = self.hdqn.select_action(s_t, self._strategy)
+            return action_q.argmax(dim=1).item()
+
+    @property
+    def uses_param_env(self):
+        return True
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -103,24 +119,35 @@ class FullAgentPolicy:
 def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
     """Run n_episodes and collect metrics."""
     np.random.seed(seed)
+
+    # h-DQN uses param-mode env (45 actions with intensity/variant)
+    use_param = getattr(policy, "uses_param_env", False)
+    if use_param:
+        eval_env = DeceptionEnv(max_steps=env.max_steps, action_mode="param")
+    else:
+        eval_env = env
+
     rewards = []
     lengths = []
     p_reals = []
-    survivals = []  # did agent survive full episode?
+    survivals = []
     action_counts = np.zeros(N_ACTIONS)
     phase_actions = {p: np.zeros(N_ACTIONS) for p in range(4)}
 
     for ep in range(n_episodes):
-        state = env.reset()
+        state = eval_env.reset()
         total_r = 0.0
         steps = 0
         while True:
             action = policy.select(state)
-            action_counts[action] += 1
+            # Map 45-action to base 5 for stats tracking
+            base_action = action // 9 if use_param else action
+            base_action = min(base_action, N_ACTIONS - 1)
+            action_counts[base_action] += 1
             phase = int(round(state[0] * 3))
-            phase_actions[phase][action] += 1
+            phase_actions[phase][base_action] += 1
 
-            state, reward, done, info = env.step(action)
+            state, reward, done, info = eval_env.step(action)
             total_r += reward
             steps += 1
             if done:
@@ -129,9 +156,18 @@ def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
         rewards.append(total_r)
         lengths.append(steps)
         p_reals.append(info.get("p_real", 0))
-        survivals.append(steps >= env.max_steps)
+        survivals.append(steps >= eval_env.max_steps)
 
     total_acts = max(action_counts.sum(), 1)
+
+    # F1: deception effectiveness classification
+    tp = sum(1 for r in rewards if r >= 40)
+    fp = sum(1 for r in rewards if 10 <= r < 40)
+    fn = sum(1 for r in rewards if r < 10)
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+
     return {
         "policy": policy.name,
         "episodes": n_episodes,
@@ -140,6 +176,10 @@ def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
         "avg_length": round(float(np.mean(lengths)), 1),
         "avg_p_real": round(float(np.mean(p_reals)), 4),
         "survival_rate": round(float(np.mean(survivals)), 4),
+        "f1": round(f1, 4),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "tp": tp, "fp": fp, "fn": fn,
         "action_distribution": {
             ACTION_NAMES[i]: round(action_counts[i] / total_acts * 100, 1)
             for i in range(N_ACTIONS)
@@ -155,14 +195,15 @@ def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
 def print_comparison(results: list[dict]):
     """Pretty print comparison table."""
     print()
-    print("  ╔════════════════╦══════════╦════════╦═════════╦══════════╦══════════╗")
-    print("  ║ Policy         ║ Avg R    ║ Std R  ║ P(real) ║ Survive% ║ Avg Len  ║")
-    print("  ╠════════════════╬══════════╬════════╬═════════╬══════════╬══════════╣")
+    print("  ╔════════════════╦══════════╦════════╦═════════╦══════════╦══════════╦════════╦════════╦════════╗")
+    print("  ║ Policy         ║ Avg R    ║ Std R  ║ P(real) ║ Survive% ║ Avg Len  ║   P    ║   R    ║  F1    ║")
+    print("  ╠════════════════╬══════════╬════════╬═════════╬══════════╬══════════╬════════╬════════╬════════╣")
     for r in results:
         name = r["policy"]
         print(f"  ║ {name:14s} ║ {r['avg_reward']:8.2f} ║ {r['std_reward']:6.2f} ║ "
-              f"{r['avg_p_real']:7.4f} ║ {r['survival_rate']*100:7.1f}% ║ {r['avg_length']:8.1f} ║")
-    print("  ╚════════════════╩══════════╩════════╩═════════╩══════════╩══════════╝")
+              f"{r['avg_p_real']:7.4f} ║ {r['survival_rate']*100:7.1f}% ║ {r['avg_length']:8.1f} ║"
+              f" {r['precision']:.4f} ║ {r['recall']:.4f} ║ {r['f1']:.4f} ║")
+    print("  ╚════════════════╩══════════╩════════╩═════════╩══════════╩══════════╩════════╩════════╩════════╝")
 
     # Action distribution
     print()
@@ -221,7 +262,7 @@ def main():
     print("║  MIRAGE-UAS  4-Policy Comparison                 ║")
     print("╠═══════════════════════════════════════════════════╣")
     print(f"║  Episodes:  {args.episodes:<38}║")
-    print("║  Policies:  Random / Greedy / DQN / Full Agent   ║")
+    print("║  Policies:  Random / Greedy / DQN / h-DQN        ║")
     print("╚═══════════════════════════════════════════════════╝")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -236,11 +277,18 @@ def main():
     model_path = Path(args.model)
     if model_path.exists():
         policies.append(DQNPolicy(str(model_path), device))
-        policies.append(FullAgentPolicy(str(model_path), device))
         print(f"  DQN model: {model_path}")
     else:
-        print(f"  ⚠ DQN model not found: {model_path}")
+        print(f"  DQN model not found: {model_path}")
         print(f"    Run: python3 scripts/train_dqn.py --episodes 3000")
+
+    hdqn_path = Path("results/models/hdqn_deception_agent.pt")
+    if hdqn_path.exists():
+        policies.append(HDQNPolicy(str(hdqn_path), device))
+        print(f"  h-DQN model: {hdqn_path}")
+    else:
+        print(f"  h-DQN model not found: {hdqn_path}")
+        print(f"    Run: python3 scripts/train_hdqn.py --episodes 3000")
 
     # Evaluate each policy
     results = []
