@@ -65,15 +65,19 @@ class BehaviorLearner:
         self,
         drone_id: str = "",
         model_dir: str = "results/models",
-        policy_mode: str = "auto",  # "auto" / "dqn" / "greedy" / "random"
+        policy_mode: str = "auto",  # "auto" / "hdqn" / "dqn" / "greedy" / "random"
         **kwargs,  # backward compat (alpha etc)
     ) -> None:
         self._drone_id = drone_id
         self._model_dir = Path(model_dir)
         self._policy_mode = policy_mode
         self._dqn_net = None
+        self._hdqn = None
         self._device = None
         self._step_count = 0
+        self._current_strategy = None
+        self._strategy_steps = 0
+        self._strategy_horizon = 10
 
         # Stats tracking
         self._total_selections = [0] * N_ACTIONS
@@ -87,18 +91,71 @@ class BehaviorLearner:
             3: 4,  # EXFIL  → fake_key
         }
 
-        # Try loading DQN
-        if policy_mode in ("auto", "dqn"):
+        # Try loading h-DQN first, then DQN
+        if policy_mode in ("auto", "hdqn"):
+            self._try_load_hdqn()
+        if self._hdqn is None and policy_mode in ("auto", "dqn"):
             self._try_load_dqn()
 
-        mode_str = "DQN" if self._dqn_net else ("greedy" if policy_mode != "random" else "random")
+        if self._hdqn:
+            mode_str = "h-DQN"
+        elif self._dqn_net:
+            mode_str = "DQN"
+        elif policy_mode == "random":
+            mode_str = "random"
+        else:
+            mode_str = "greedy"
         logger.info(
             "behavior_learner_initialized",
             drone_id=drone_id,
             policy_mode=mode_str,
             model_dir=str(self._model_dir),
+            hdqn_loaded=self._hdqn is not None,
             dqn_loaded=self._dqn_net is not None,
         )
+
+    def _try_load_hdqn(self) -> None:
+        """Load h-DQN policy from checkpoint if available."""
+        model_path = self._model_dir / "hdqn_deception_agent.pt"
+        if not model_path.exists():
+            logger.info("hdqn_model_not_found", path=str(model_path))
+            return
+
+        try:
+            import torch
+            from honey_drone.hierarchical_agent import HierarchicalDQN
+
+            from honey_drone.hierarchical_agent import MetaController, Controller
+
+            self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            ckpt = torch.load(str(model_path), map_location=self._device, weights_only=False)
+            # Auto-detect network size from checkpoint
+            meta_h = ckpt["meta_state_dict"]["feature.0.weight"].shape[0]
+            ctrl_h = ckpt["controller_state_dict"]["feature.0.weight"].shape[0]
+            self._hdqn = HierarchicalDQN.__new__(HierarchicalDQN)
+            torch.nn.Module.__init__(self._hdqn)
+            self._hdqn.meta = MetaController(hidden=meta_h)
+            self._hdqn.controller = Controller(hidden=ctrl_h)
+            self._hdqn.meta.load_state_dict(ckpt["meta_state_dict"])
+            self._hdqn.controller.load_state_dict(ckpt["controller_state_dict"])
+            self._hdqn = self._hdqn.to(self._device)
+            self._hdqn.eval()
+
+            train_ep = ckpt.get("episode", "?")
+            train_reward = ckpt.get("avg_reward", "?")
+            logger.info(
+                "hdqn_policy_loaded",
+                drone_id=self._drone_id,
+                path=str(model_path),
+                trained_episodes=train_ep,
+                trained_avg_reward=train_reward,
+                n_strategies=ckpt.get("n_strategies", 6),
+                n_actions=ckpt.get("n_actions", 45),
+                device=str(self._device),
+            )
+        except Exception as e:
+            logger.warning("hdqn_load_failed", error=str(e))
+            self._hdqn = None
 
     def _try_load_dqn(self) -> None:
         """Load DQN policy from checkpoint if available."""
@@ -166,7 +223,9 @@ class BehaviorLearner:
         self._step_count += 1
         state = self._context_to_state(context)
 
-        if self._dqn_net is not None:
+        if self._hdqn is not None:
+            action_idx, debug = self._select_hdqn(state, context)
+        elif self._dqn_net is not None:
             action_idx, debug = self._select_dqn(state, context)
         elif self._policy_mode == "random":
             action_idx = np.random.randint(N_ACTIONS)
@@ -189,6 +248,39 @@ class BehaviorLearner:
         )
 
         return action_idx, action_name, debug
+
+    def _select_hdqn(self, state: np.ndarray, context: dict) -> tuple[int, dict]:
+        """h-DQN: MetaController selects strategy, Controller selects action.
+        Maps 45-action back to base 5 for the proactive loop."""
+        import torch
+        from honey_drone.hierarchical_agent import STRATEGY_NAMES, N_STRATEGIES
+
+        self._strategy_steps += 1
+        # Select strategy every K steps
+        if self._current_strategy is None or self._strategy_steps >= self._strategy_horizon:
+            with torch.no_grad():
+                s_t = torch.FloatTensor(state).unsqueeze(0).to(self._device)
+                strategy_q = self._hdqn.meta(s_t).squeeze(0).cpu().numpy()
+            self._current_strategy = int(np.argmax(strategy_q))
+            self._strategy_steps = 0
+
+        # Select parameterized action
+        with torch.no_grad():
+            s_t = torch.FloatTensor(state).unsqueeze(0).to(self._device)
+            action_q = self._hdqn.select_action(s_t, self._current_strategy)
+            flat_action = action_q.argmax(dim=1).item()
+
+        # Decode to base action (0-4) for the proactive loop
+        base_action = flat_action // 9
+
+        strategy_name = STRATEGY_NAMES[self._current_strategy]
+        return base_action, {
+            "mode": "h-DQN",
+            "strategy": strategy_name,
+            "strategy_idx": self._current_strategy,
+            "flat_action": flat_action,
+            "base_action": base_action,
+        }
 
     def _select_dqn(self, state: np.ndarray, context: dict) -> tuple[int, dict]:
         """DQN forward pass → action with highest Q-value."""
@@ -230,8 +322,16 @@ class BehaviorLearner:
     def get_stats(self) -> dict:
         """Return policy statistics."""
         total = sum(self._total_selections)
+        if self._hdqn:
+            mode = "h-DQN"
+        elif self._dqn_net:
+            mode = "DQN"
+        elif self._policy_mode == "random":
+            mode = "random"
+        else:
+            mode = "greedy"
         return {
-            "mode": "DQN" if self._dqn_net else ("greedy" if self._policy_mode != "random" else "random"),
+            "mode": mode,
             "total_steps": total,
             "per_arm": {
                 ACTIONS[i]: {

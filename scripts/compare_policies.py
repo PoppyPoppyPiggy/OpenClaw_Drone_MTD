@@ -82,12 +82,22 @@ class HDQNPolicy:
     """Hierarchical DQN — MetaController + Controller on 45 parameterized actions."""
     name = "h-DQN"
     def __init__(self, model_path: str, device: str = "cuda"):
-        from honey_drone.hierarchical_agent import HierarchicalDQN, N_STRATEGIES
+        from honey_drone.hierarchical_agent import (
+            HierarchicalDQN, MetaController, Controller, N_STRATEGIES,
+            STATE_DIM, CONTROLLER_INPUT_DIM, N_ACTIONS,
+        )
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.hdqn = HierarchicalDQN().to(self.device)
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
+        # Auto-detect network size from checkpoint weights
+        meta_h = ckpt["meta_state_dict"]["feature.0.weight"].shape[0]
+        ctrl_h = ckpt["controller_state_dict"]["feature.0.weight"].shape[0]
+        self.hdqn = HierarchicalDQN.__new__(HierarchicalDQN)
+        torch.nn.Module.__init__(self.hdqn)
+        self.hdqn.meta = MetaController(hidden=meta_h)
+        self.hdqn.controller = Controller(hidden=ctrl_h)
         self.hdqn.meta.load_state_dict(ckpt["meta_state_dict"])
         self.hdqn.controller.load_state_dict(ckpt["controller_state_dict"])
+        self.hdqn = self.hdqn.to(self.device)
         self.hdqn.eval()
         self._strategy = None
         self._strategy_steps = 0
