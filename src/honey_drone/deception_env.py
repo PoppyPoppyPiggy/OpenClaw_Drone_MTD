@@ -53,15 +53,48 @@ from dataclasses import dataclass, field
 import numpy as np
 
 
-N_ACTIONS = 5
+N_BASE_ACTIONS = 5
+N_INTENSITIES = 3   # low=0, medium=1, high=2
+N_VARIANTS = 3      # parameter variant A=0, B=1, C=2
+N_ACTIONS_FLAT = N_BASE_ACTIONS * N_INTENSITIES * N_VARIANTS  # 45
+# Legacy alias for backward compat
+N_ACTIONS = N_BASE_ACTIONS
 STATE_DIM = 10
-ACTION_NAMES = [
+
+BASE_ACTION_NAMES = [
     "proactive_statustext",
     "proactive_flight_sim",
     "proactive_ghost_port",
     "proactive_reboot",
     "proactive_fake_key",
 ]
+# Legacy alias
+ACTION_NAMES = BASE_ACTION_NAMES
+
+INTENSITY_NAMES = ["low", "medium", "high"]
+VARIANT_NAMES = ["A", "B", "C"]
+
+# Full 45-action name table
+ACTION_NAMES_45 = []
+for base in BASE_ACTION_NAMES:
+    for intensity in INTENSITY_NAMES:
+        for variant in VARIANT_NAMES:
+            ACTION_NAMES_45.append(f"{base}_{intensity}_{variant}")
+
+
+def decode_action(action_idx: int) -> tuple[int, int, int]:
+    """Decode flat 0-44 → (base 0-4, intensity 0-2, variant 0-2)."""
+    base = action_idx // 9
+    remainder = action_idx % 9
+    intensity = remainder // 3
+    variant = remainder % 3
+    return base, intensity, variant
+
+
+def encode_action(base: int, intensity: int, variant: int) -> int:
+    """Encode (base, intensity, variant) → flat 0-44."""
+    return base * 9 + intensity * 3 + variant
+
 
 # Bayesian LR table (from DeceptionStateManager)
 BAYESIAN_LR = {
@@ -96,38 +129,34 @@ class DeceptionEnv:
     """
     Gym-style environment for training deception agent.
     No external dependencies — pure Python + numpy.
+
+    Supports two modes:
+        action_mode="base"  → 5 base actions (legacy DQN)
+        action_mode="param" → 45 parameterized actions (h-DQN)
     """
 
-    def __init__(self, max_steps: int = 100) -> None:
+    def __init__(self, max_steps: int = 100, action_mode: str = "base") -> None:
         self.max_steps = max_steps
+        self.action_mode = action_mode  # "base" or "param"
+        self.n_actions = N_ACTIONS_FLAT if action_mode == "param" else N_BASE_ACTIONS
         self.state = AttackerState()
         self._step_duration = 3.0  # seconds per step
 
         # ══════════════════════════════════════════════════════
-        # Action effectiveness matrices
-        #
-        # Calibrated from real testbed experiment data:
-        #   - confusion_honey_*.json: P(real) changes per behavior
-        #   - table_vi_agent_decisions.json: dwell impact per behavior
-        #   - attacker_log.jsonl: engagement rates per level
-        #
-        # Each cell = P(real) change when action is taken in that phase
-        # Positive = attacker believes more (good deception)
-        # Negative = attacker suspects honeypot (bad)
-        #
-        # The DQN must learn THIS mapping from experience.
+        # Base action effectiveness matrices (5 actions × 4 phases)
+        # Calibrated from real testbed experiment data.
         # ══════════════════════════════════════════════════════
 
         # [phase][action] → Δ P(real)
         self._action_effect = np.array([
             #  statustext  flight_sim  ghost_port  reboot    fake_key
-            [  0.04,       0.06,       0.01,       -0.01,    0.02  ],  # RECON: show activity → flight best
-            [  0.01,       0.03,       0.03,       0.05,     0.07  ],  # EXPLOIT: bait creds → fake_key best
-            [  0.05,       0.02,       0.03,       0.06,     0.04  ],  # PERSIST: confuse → reboot best
-            [ -0.02,       -0.01,      0.02,       0.04,     0.06  ],  # EXFIL: leak data → fake_key best
+            [  0.04,       0.06,       0.01,       -0.01,    0.02  ],  # RECON
+            [  0.01,       0.03,       0.03,       0.05,     0.07  ],  # EXPLOIT
+            [  0.05,       0.02,       0.03,       0.06,     0.04  ],  # PERSIST
+            [ -0.02,       -0.01,      0.02,       0.04,     0.06  ],  # EXFIL
         ])
 
-        # [phase][action] → P(attacker sends more packets after our action)
+        # [phase][action] → P(attacker sends more packets)
         self._action_engage = np.array([
             [  0.7,        0.85,       0.3,        0.15,     0.4   ],  # RECON
             [  0.3,        0.4,        0.5,        0.6,      0.85  ],  # EXPLOIT
@@ -136,12 +165,37 @@ class DeceptionEnv:
         ])
 
         # [phase][action] → P(attacker becomes suspicious)
-        # reboot is risky (silence = suspicious), ghost in EXFIL = suspicious
         self._action_evasion = np.array([
             [  0.01,       0.01,       0.04,       0.10,     0.02  ],  # RECON
             [  0.03,       0.02,       0.05,       0.12,     0.04  ],  # EXPLOIT
             [  0.02,       0.04,       0.06,       0.15,     0.03  ],  # PERSIST
             [  0.06,       0.08,       0.08,       0.18,     0.04  ],  # EXFIL
+        ])
+
+        # ══════════════════════════════════════════════════════
+        # Intensity & variant modifiers for 45-action mode
+        #
+        # Calibration rationale (MIRAGE-UAS §4.3 Table VIII):
+        #   Low intensity  = minimal observable change → low risk, low reward
+        #   Medium         = standard operation → balanced (matches base 5-action)
+        #   High intensity = aggressive/visible change → high reward but HIGH risk
+        #
+        # Key design: evasion scales SUPERLINEARLY with intensity.
+        #   effect:  [0.6, 1.0, 1.4]  — diminishing returns at high
+        #   engage:  [0.7, 1.0, 1.3]  — more visible = more response
+        #   evasion: [0.4, 1.0, 2.2]  — superlinear! high = 2.2× base evasion
+        #
+        # This creates a genuine tradeoff: high intensity gives +40% effect
+        # but +120% evasion risk. The optimal policy must mix intensities.
+        # ══════════════════════════════════════════════════════
+        self._intensity_effect = np.array([0.6, 1.0, 1.4])
+        self._intensity_engage = np.array([0.7, 1.0, 1.3])
+        self._intensity_evasion = np.array([0.4, 1.0, 2.2])  # superlinear!
+        # variant modifiers: (effect_mult, engage_mult, evasion_mult)
+        self._variant_mods = np.array([
+            [1.0, 1.0, 1.0],   # A: balanced — no modification
+            [1.15, 0.85, 0.9], # B: more effective, less engaging, safer
+            [0.85, 1.15, 1.1], # C: less effective, more engaging, riskier
         ])
 
     def reset(self) -> np.ndarray:
@@ -157,7 +211,7 @@ class DeceptionEnv:
         Execute one step.
 
         Args:
-            action: int 0-4
+            action: int 0-4 (base mode) or 0-44 (param mode)
 
         Returns:
             (next_state, reward, done, info)
@@ -168,7 +222,18 @@ class DeceptionEnv:
         phase = min(s.phase, 3)
 
         # ── 1. Apply action effect on P(real) ──
-        base_effect = self._action_effect[phase, action]
+        if self.action_mode == "param":
+            base, intensity, variant = decode_action(action)
+            base_effect = self._action_effect[phase, base]
+            v_effect, v_engage, v_evasion = self._variant_mods[variant]
+            base_effect = base_effect * self._intensity_effect[intensity] * v_effect
+            engage_mult = self._intensity_engage[intensity] * v_engage
+            evasion_mult = self._intensity_evasion[intensity] * v_evasion
+        else:
+            base = action
+            base_effect = self._action_effect[phase, action]
+            intensity, variant = 1, 0
+            engage_mult, evasion_mult = 1.0, 1.0
         noise = random.gauss(0, 0.01)
         delta_p = base_effect + noise
 
@@ -182,7 +247,8 @@ class DeceptionEnv:
         s.p_real = (lr * prior) / (lr * prior + 1.0 * (1 - prior))
 
         # ── 2. Engagement: does attacker respond? ──
-        engage_prob = self._action_engage[phase, action]
+        engage_prob = self._action_engage[phase, base] * engage_mult
+        engage_prob = min(engage_prob, 0.98)
         engaged = random.random() < engage_prob
         if engaged:
             new_pkts = random.randint(1, 5)
@@ -190,7 +256,8 @@ class DeceptionEnv:
             s.services_touched += 1 if random.random() < 0.3 else 0
 
         # ── 3. Evasion: does attacker become suspicious? ──
-        evasion_prob = self._action_evasion[phase, action]
+        evasion_prob = self._action_evasion[phase, base] * evasion_mult
+        evasion_prob = min(evasion_prob, 0.5)
         # Evasion increases as p_real drops
         if s.p_real < 0.5:
             evasion_prob *= 2.0
@@ -214,23 +281,29 @@ class DeceptionEnv:
             s.exploit_attempts += 1
 
         # Ghost port tracking
-        if action == 2:  # ghost_port
+        if base == 2:  # ghost_port
             s.ghost_active = min(s.ghost_active + 1, 5)
 
         # ── 5. Compute reward ──
         reward = self._compute_reward(delta_p, engaged, s)
 
         # ── 6. Check termination ──
+        # Terminal rewards derived from MIRAGE-UAS DES (Eq.19):
+        #   DES = w1·time_on_decoys + w2·breach_prevention + w3·confusion + w4·bc_follow + w5·ghost_hit
+        # Terminal bonus/penalty represents the episode-level DES contribution:
+        #   - Full survival → maximum DES (all time on decoys, confusion maintained)
+        #   - p_real collapse → breach risk, DES drops to near zero
+        #   - Evasion exit → partial DES (some dwell, but attacker detected honeypot)
         done = False
-        if s.p_real < 0.2:  # attacker left (detected honeypot)
+        if s.p_real < 0.2:  # attacker detected honeypot → DES ≈ 0
             done = True
-            reward -= 5.0  # severe penalty — deception failed
+            reward -= 5.0
         elif s.step_count >= self.max_steps:
             done = True
-            reward += 3.0 + s.p_real * 2.0  # survived + belief bonus (max +5)
+            reward += 3.0 + s.p_real * 2.0  # max DES contribution
         elif s.evasion_signals >= 5:
             done = True
-            reward -= 2.0  # attacker suspicious, left
+            reward -= 2.0
 
         info = {
             "p_real": round(s.p_real, 4),
@@ -247,19 +320,22 @@ class DeceptionEnv:
         """
         Reward = 0.35 * belief + 0.25 * engage + 0.25 * dwell + 0.15 * safety
 
-        belief:  Δp_real → deception quality
-        engage:  attacker response → interaction maintained
-        dwell:   per-step survival bonus → longer = better
-        safety:  evasion penalty → suspicion = bad
+        Weights derived from MIRAGE-UAS Eq.NEW-1 deception reward:
+          r_dec = w_dwell·min(t/T_max,1) + w_cmd·log(1+N) + w_prot·I(safe)
+        Mapped to RL per-step signal:
+          belief  (0.35) ← w_cmd: more commands = more deception interaction
+          engage  (0.25) ← w_dwell: attacker staying = dwell time increasing
+          dwell   (0.25) ← per-step survival = direct dwell contribution
+          safety  (0.15) ← w_prot·I(safe): evasion = breach risk
 
-        Theoretical max per step: ~0.85
-        Theoretical max per episode (100 steps): ~85
+        REF: DeceptionStateManager likelihood ratios calibrate delta_p scaling.
+             LR=1.2 for normal interaction → Δp≈0.03 per step at prior=0.7
+             Scaling factor 8 maps this to r_belief≈0.24, giving meaningful gradient.
         """
         r_belief = max(-1.0, min(1.0, delta_p * 8))
         r_engage = 1.0 if engaged else 0.0
-        r_dwell = 0.3  # meaningful per-step survival bonus
-        r_safety = -0.5 if s.evasion_signals > 0 and s.evasion_signals == (s.step_count > 0) else 0.0
-        # Progressive safety penalty
+        r_dwell = 0.3
+        r_safety = 0.0
         if s.evasion_signals > 0:
             r_safety = -0.3 * min(s.evasion_signals / 3.0, 1.0)
 
