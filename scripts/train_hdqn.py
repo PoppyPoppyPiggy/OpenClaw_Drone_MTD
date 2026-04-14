@@ -240,8 +240,8 @@ def train(
     meta_optimizer = optim.Adam(policy_hdqn.meta.parameters(), lr=meta_lr)
     ctrl_optimizer = optim.Adam(policy_hdqn.controller.parameters(), lr=ctrl_lr)
 
-    ctrl_replay = TensorReplayBuffer(1_000_000, CONTROLLER_INPUT_DIM, device)
-    meta_replay = TensorReplayBuffer(1_000_000, STATE_DIM, device)
+    ctrl_replay = TensorReplayBuffer(2_000_000, CONTROLLER_INPUT_DIM, device)
+    meta_replay = TensorReplayBuffer(2_000_000, STATE_DIM, device)
     meta_reward_norm = RewardNormalizer(clip=5.0)
 
     # Per-env tracking
@@ -498,34 +498,60 @@ def train(
     print(f"  EVALUATION  (200 episodes, greedy policy)")
     print(f"{'═' * 60}")
     policy_hdqn.eval()
-    eval_env = DeceptionEnv(max_steps=200, action_mode="param")
-    eval_rewards = []
+    n_eval = 200
+    eval_env = VecDeceptionEnv(n_envs=n_eval, max_steps=200)
+    eval_states = eval_env.reset_all()
+    eval_rewards_acc = np.zeros(n_eval, dtype=np.float32)
+    eval_strats = np.full(n_eval, -1, dtype=np.int32)
+    eval_strat_steps = np.zeros(n_eval, dtype=np.int32)
     eval_strategy_counts = np.zeros(N_STRATEGIES)
     eval_base_counts = np.zeros(N_BASE_ACTIONS)
+    eval_done_mask = np.zeros(n_eval, dtype=bool)
+    eval_rewards = []
 
-    for _ in range(200):
-        state = eval_env.reset()
-        total_r = 0.0
-        strat = None
-        strat_steps = 0
-        while True:
-            if strat is None or strat_steps >= strategy_horizon:
+    for _ in range(200):  # max steps
+        need_strat = (eval_strats < 0) | (eval_strat_steps >= strategy_horizon)
+        if need_strat.any():
+            idx = np.where(need_strat & ~eval_done_mask)[0]
+            if len(idx) > 0:
                 with torch.no_grad():
-                    s_t = torch.from_numpy(state).unsqueeze(0).to(device)
-                    strat = policy_hdqn.meta(s_t).argmax(dim=1).item()
-                eval_strategy_counts[strat] += 1
-                strat_steps = 0
-            with torch.no_grad():
-                s_t = torch.from_numpy(state).unsqueeze(0).to(device)
-                action = policy_hdqn.select_action(s_t, strat).argmax(dim=1).item()
-            base_a, _, _ = decode_action(action)
-            eval_base_counts[base_a] += 1
-            state, reward, done, info = eval_env.step(action)
-            total_r += reward
-            strat_steps += 1
-            if done:
-                break
-        eval_rewards.append(total_r)
+                    s_t = torch.from_numpy(eval_states[idx]).to(device)
+                    eval_strats[idx] = policy_hdqn.meta(s_t).argmax(dim=1).cpu().numpy()
+                for i in idx:
+                    eval_strategy_counts[eval_strats[i]] += 1
+                eval_strat_steps[idx] = 0
+
+        # Greedy actions for all non-done envs
+        active = np.where(~eval_done_mask)[0]
+        if len(active) == 0:
+            break
+        with torch.no_grad():
+            s_t = torch.from_numpy(eval_states[active]).to(device)
+            oh = torch.zeros(len(active), N_STRATEGIES, device=device)
+            si = torch.from_numpy(eval_strats[active].clip(0).astype(np.int64)).to(device)
+            oh.scatter_(1, si.unsqueeze(1), 1.0)
+            ci = torch.cat([s_t, oh], dim=1)
+            actions_active = policy_hdqn.controller(ci).argmax(dim=1).cpu().numpy()
+
+        actions = np.zeros(n_eval, dtype=np.int32)
+        actions[active] = actions_active
+        for i in active:
+            eval_base_counts[actions[i] // 9] += 1
+
+        next_states, rewards, dones, info = eval_env.step(actions)
+        eval_rewards_acc += rewards * (~eval_done_mask)
+        eval_strat_steps += 1
+        eval_states = next_states
+
+        newly_done = dones & ~eval_done_mask
+        if newly_done.any():
+            eval_rewards.extend(eval_rewards_acc[newly_done].tolist())
+            eval_done_mask |= dones
+
+    # Collect any remaining
+    still_active = ~eval_done_mask
+    if still_active.any():
+        eval_rewards.extend(eval_rewards_acc[still_active].tolist())
 
     avg_eval = np.mean(eval_rewards)
     std_eval = np.std(eval_rewards)

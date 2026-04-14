@@ -6,12 +6,12 @@ hierarchical_agent.py — Hierarchical DQN for Agentic Deception
     h-DQN (Kulkarni et al., 2016, NIPS) adapted for deception:
 
     MetaController (high-level):
-        Input:  state (10-dim)
+        Input:  state (64-dim)
         Output: strategy (6 options)
         Runs every K steps (strategy horizon)
 
     Controller (low-level):
-        Input:  state (10-dim) + strategy one-hot (6-dim) = 16-dim
+        Input:  state (64-dim) + strategy one-hot (6-dim) = 70-dim
         Output: parameterized action (45 = 5 base × 3 intensity × 3 variant)
 
 [6 STRATEGIES]
@@ -36,8 +36,8 @@ import numpy as np
 
 N_STRATEGIES = 6
 N_ACTIONS = 45
-STATE_DIM = 10
-CONTROLLER_INPUT_DIM = STATE_DIM + N_STRATEGIES  # 16
+STATE_DIM = 64
+CONTROLLER_INPUT_DIM = STATE_DIM + N_STRATEGIES  # 70
 
 STRATEGY_NAMES = [
     "aggressive_engage",
@@ -55,46 +55,14 @@ class MetaController(nn.Module):
     Dueling architecture for stable Q-value estimation.
     """
 
-    def __init__(self, state_dim: int = STATE_DIM, n_strategies: int = N_STRATEGIES, hidden: int = 512):
+    def __init__(self, state_dim: int = STATE_DIM, n_strategies: int = N_STRATEGIES, hidden: int = 768):
         super().__init__()
         self.feature = nn.Sequential(
             nn.Linear(state_dim, hidden),
+            nn.LayerNorm(hidden),
             nn.ReLU(),
             nn.Linear(hidden, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, hidden),
-            nn.ReLU(),
-        )
-        self.value = nn.Sequential(
-            nn.Linear(hidden, hidden // 2),
-            nn.ReLU(),
-            nn.Linear(hidden // 2, 1),
-        )
-        self.advantage = nn.Sequential(
-            nn.Linear(hidden, hidden // 2),
-            nn.ReLU(),
-            nn.Linear(hidden // 2, n_strategies),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        feat = self.feature(x)
-        val = self.value(feat)
-        adv = self.advantage(feat)
-        return val + adv - adv.mean(dim=-1, keepdim=True)
-
-
-class Controller(nn.Module):
-    """
-    Low-level: selects parameterized action from state + strategy.
-    Input: state (10) + strategy one-hot (6) = 16-dim.
-    """
-
-    def __init__(self, input_dim: int = CONTROLLER_INPUT_DIM, n_actions: int = N_ACTIONS, hidden: int = 1024):
-        super().__init__()
-        self.feature = nn.Sequential(
-            nn.Linear(input_dim, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, hidden),
+            nn.LayerNorm(hidden),
             nn.ReLU(),
             nn.Linear(hidden, hidden),
             nn.ReLU(),
@@ -109,7 +77,47 @@ class Controller(nn.Module):
         self.advantage = nn.Sequential(
             nn.Linear(hidden // 2, hidden // 4),
             nn.ReLU(),
-            nn.Linear(hidden // 4, n_actions),
+            nn.Linear(hidden // 4, n_strategies),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        feat = self.feature(x)
+        val = self.value(feat)
+        adv = self.advantage(feat)
+        return val + adv - adv.mean(dim=-1, keepdim=True)
+
+
+class Controller(nn.Module):
+    """
+    Low-level: selects parameterized action from state + strategy.
+    Input: state (64) + strategy one-hot (6) = 70-dim.
+    """
+
+    def __init__(self, input_dim: int = CONTROLLER_INPUT_DIM, n_actions: int = N_ACTIONS, hidden: int = 1536):
+        super().__init__()
+        self.feature = nn.Sequential(
+            nn.Linear(input_dim, hidden),
+            nn.LayerNorm(hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.LayerNorm(hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden // 2),
+            nn.ReLU(),
+            nn.Linear(hidden // 2, hidden // 4),
+            nn.ReLU(),
+        )
+        self.value = nn.Sequential(
+            nn.Linear(hidden // 4, hidden // 8),
+            nn.ReLU(),
+            nn.Linear(hidden // 8, 1),
+        )
+        self.advantage = nn.Sequential(
+            nn.Linear(hidden // 4, hidden // 8),
+            nn.ReLU(),
+            nn.Linear(hidden // 8, n_actions),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

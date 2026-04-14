@@ -59,7 +59,7 @@ N_VARIANTS = 3      # parameter variant A=0, B=1, C=2
 N_ACTIONS_FLAT = N_BASE_ACTIONS * N_INTENSITIES * N_VARIANTS  # 45
 # Legacy alias for backward compat
 N_ACTIONS = N_BASE_ACTIONS
-STATE_DIM = 10
+STATE_DIM = 64
 
 BASE_ACTION_NAMES = [
     "proactive_statustext",
@@ -367,7 +367,7 @@ class VecDeceptionEnv:
     Vectorized DeceptionEnv: runs N environments simultaneously.
     All operations are batched numpy — no Python loops per step.
 
-    State layout (N, 10): same as DeceptionEnv.
+    State layout (N, 64): expanded observation with history, rates, and derived features.
     Internal state (N, 10): phase, level, p_real, dwell, packets,
                             services, exploits, ghost, time_in_phase, evasion
     """
@@ -412,11 +412,35 @@ class VecDeceptionEnv:
         self._raw = np.zeros((n_envs, 11), dtype=np.float32)
         self._rng = np.random.default_rng()
 
+        # ── History buffers for 64-dim observation ──
+        self._p_real_hist = np.zeros((n_envs, 8), dtype=np.float32)
+        self._engaged_hist = np.zeros((n_envs, 8), dtype=np.float32)
+        self._evasion_hist = np.zeros((n_envs, 8), dtype=np.float32)
+        self._action_hist = np.zeros((n_envs, 10), dtype=np.int32)
+        self._hist_idx = np.zeros(n_envs, dtype=np.int32)
+        self._p_real_ema = np.zeros(n_envs, dtype=np.float32)
+        self._prev_packets = np.zeros(n_envs, dtype=np.float32)
+        self._prev_evasion = np.zeros(n_envs, dtype=np.float32)
+
+        # Pre-allocated identity matrices for one-hot encoding
+        self._eye4 = np.eye(4, dtype=np.float32)
+        self._eye5 = np.eye(5, dtype=np.float32)
+
     def reset_all(self) -> np.ndarray:
-        """Reset all N environments. Returns (N, 10) observations."""
+        """Reset all N environments. Returns (N, 64) observations."""
         self._raw[:] = 0.0
         self._raw[:, self._LV] = self._rng.integers(0, 3, size=self.n_envs).astype(np.float32)
-        self._raw[:, self._PR] = 0.7 + self._rng.normal(0, 0.05, size=self.n_envs).astype(np.float32)
+        init_p = (0.7 + self._rng.normal(0, 0.05, size=self.n_envs)).astype(np.float32)
+        self._raw[:, self._PR] = init_p
+        # Reset history buffers
+        self._p_real_hist[:] = init_p[:, None]  # fill all 8 slots with initial p_real
+        self._engaged_hist[:] = 0.0
+        self._evasion_hist[:] = 0.0
+        self._action_hist[:] = 0
+        self._hist_idx[:] = 0
+        self._p_real_ema[:] = init_p
+        self._prev_packets[:] = 0.0
+        self._prev_evasion[:] = 0.0
         return self._observe()
 
     def _reset_idx(self, mask: np.ndarray) -> None:
@@ -426,7 +450,17 @@ class VecDeceptionEnv:
             return
         self._raw[mask] = 0.0
         self._raw[mask, self._LV] = self._rng.integers(0, 3, size=n).astype(np.float32)
-        self._raw[mask, self._PR] = (0.7 + self._rng.normal(0, 0.05, size=n)).astype(np.float32)
+        init_p = (0.7 + self._rng.normal(0, 0.05, size=n)).astype(np.float32)
+        self._raw[mask, self._PR] = init_p
+        # Reset history buffers for done envs
+        self._p_real_hist[mask] = init_p[:, None]
+        self._engaged_hist[mask] = 0.0
+        self._evasion_hist[mask] = 0.0
+        self._action_hist[mask] = 0
+        self._hist_idx[mask] = 0
+        self._p_real_ema[mask] = init_p
+        self._prev_packets[mask] = 0.0
+        self._prev_evasion[mask] = 0.0
 
     def step(self, actions: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
         """
@@ -436,7 +470,7 @@ class VecDeceptionEnv:
             actions: (N,) int array, each in [0, 44]
 
         Returns:
-            obs (N, 10), rewards (N,), dones (N,), info dict
+            obs (N, 64), rewards (N,), dones (N,), info dict
         """
         N = self.n_envs
         raw = self._raw
@@ -524,11 +558,29 @@ class VecDeceptionEnv:
 
         dones = done_preal | done_steps | done_evasion
 
+        # ── History buffer updates ──
+        hidx8 = self._hist_idx % 8
+        hidx10 = self._hist_idx % 10
+        env_idx = np.arange(N)
+        self._p_real_hist[env_idx, hidx8] = raw[:, self._PR]
+        self._engaged_hist[env_idx, hidx8] = engaged.astype(np.float32)
+        self._evasion_hist[env_idx, hidx8] = np.minimum(raw[:, self._EV] / 3.0, 1.0)
+        self._action_hist[env_idx, hidx10] = base
+
+        packet_rate = raw[:, self._PK] - self._prev_packets
+        evasion_rate = raw[:, self._EV] - self._prev_evasion
+        self._p_real_ema = 0.3 * raw[:, self._PR] + 0.7 * self._p_real_ema
+        self._prev_packets = raw[:, self._PK].copy()
+        self._prev_evasion = raw[:, self._EV].copy()
+        self._hist_idx += 1
+
         info = {
             "p_real": raw[:, self._PR].copy(),
             "engaged": engaged.copy(),
             "evasion": raw[:, self._EV].copy(),
             "dones": dones.copy(),
+            "packet_rate": packet_rate.copy(),
+            "evasion_rate": evasion_rate.copy(),
         }
 
         obs = self._observe()
@@ -539,19 +591,103 @@ class VecDeceptionEnv:
         return obs, rewards, dones, info
 
     def _observe(self) -> np.ndarray:
-        """Return (N, 10) normalized observations."""
+        """Return (N, 64) normalized observations with history and derived features."""
+        N = self.n_envs
         raw = self._raw
-        obs = np.empty((self.n_envs, STATE_DIM), dtype=np.float32)
-        obs[:, 0] = raw[:, self._PH] / 3.0
-        obs[:, 1] = raw[:, self._LV] / 4.0
-        obs[:, 2] = raw[:, self._PR]
-        obs[:, 3] = np.minimum(raw[:, self._DW] / 600.0, 1.0)
-        obs[:, 4] = np.minimum(raw[:, self._PK] / 100.0, 1.0)
-        obs[:, 5] = np.minimum(raw[:, self._SV] / 10.0, 1.0)
-        obs[:, 6] = np.minimum(raw[:, self._EX] / 5.0, 1.0)
-        obs[:, 7] = np.minimum(raw[:, self._GH] / 5.0, 1.0)
-        obs[:, 8] = np.minimum(raw[:, self._TP] / 120.0, 1.0)
-        obs[:, 9] = np.minimum(raw[:, self._EV] / 3.0, 1.0)
+        obs = np.zeros((N, STATE_DIM), dtype=np.float32)
+
+        # [0-3] phase one-hot (4)
+        phase_idx = np.clip(raw[:, self._PH].astype(np.int32), 0, 3)
+        obs[:, 0:4] = self._eye4[phase_idx]
+
+        # [4-8] level one-hot (5)
+        level_idx = np.clip(raw[:, self._LV].astype(np.int32), 0, 4)
+        obs[:, 4:9] = self._eye5[level_idx]
+
+        # [9] p_real current
+        obs[:, 9] = raw[:, self._PR]
+
+        # [10-17] p_real history last 8 steps (ring buffer, newest first)
+        for i in range(8):
+            obs[:, 10 + i] = self._p_real_hist[
+                np.arange(N), (self._hist_idx - 1 - i) % 8
+            ]
+
+        # [18-25] engagement history last 8 steps
+        for i in range(8):
+            obs[:, 18 + i] = self._engaged_hist[
+                np.arange(N), (self._hist_idx - 1 - i) % 8
+            ]
+
+        # [26-33] evasion history last 8 steps
+        for i in range(8):
+            obs[:, 26 + i] = self._evasion_hist[
+                np.arange(N), (self._hist_idx - 1 - i) % 8
+            ]
+
+        # [34-38] action frequency (count of each base action in last 10 / 10)
+        for a in range(N_BASE_ACTIONS):
+            obs[:, 34 + a] = np.sum(self._action_hist == a, axis=1).astype(np.float32) / 10.0
+
+        # [39-44] raw state features (clamped)
+        obs[:, 39] = np.minimum(raw[:, self._DW] / 600.0, 1.0)
+        obs[:, 40] = np.minimum(raw[:, self._PK] / 100.0, 1.0)
+        obs[:, 41] = np.minimum(raw[:, self._SV] / 10.0, 1.0)
+        obs[:, 42] = np.minimum(raw[:, self._EX] / 5.0, 1.0)
+        obs[:, 43] = np.minimum(raw[:, self._GH] / 5.0, 1.0)
+        obs[:, 44] = np.minimum(raw[:, self._TP] / 120.0, 1.0)
+
+        # [45] packet_rate / 5 clamped
+        obs[:, 45] = np.clip(
+            (raw[:, self._PK] - self._prev_packets) / 5.0, 0.0, 1.0
+        )
+
+        # [46] engagement_rate (mean of last 8 engaged)
+        obs[:, 46] = np.mean(self._engaged_hist, axis=1)
+
+        # [47] evasion_rate clamped
+        obs[:, 47] = np.clip(
+            raw[:, self._EV] - self._prev_evasion, 0.0, 1.0
+        )
+
+        # [48-49] sin/cos time encoding
+        step_count = raw[:, self._SC]
+        time_frac = step_count / max(self.max_steps, 1)
+        obs[:, 48] = np.sin(2.0 * np.pi * time_frac)
+        obs[:, 49] = np.cos(2.0 * np.pi * time_frac)
+
+        # [50] progress
+        obs[:, 50] = step_count / max(self.max_steps, 1)
+
+        # [51] delta_p 1-step * 5, clamped [-1, 1]
+        env_idx = np.arange(N)
+        p_prev1 = self._p_real_hist[env_idx, (self._hist_idx - 2) % 8]
+        obs[:, 51] = np.clip((raw[:, self._PR] - p_prev1) * 5.0, -1.0, 1.0)
+
+        # [52] delta_p 4-step * 2.5, clamped [-1, 1]
+        p_prev4 = self._p_real_hist[env_idx, (self._hist_idx - 5) % 8]
+        obs[:, 52] = np.clip((raw[:, self._PR] - p_prev4) * 2.5, -1.0, 1.0)
+
+        # [53] p_real_ema
+        obs[:, 53] = self._p_real_ema
+
+        # [54] p_real variance over last 8
+        obs[:, 54] = np.var(self._p_real_hist, axis=1)
+
+        # [55] phase_duration = time_in_phase / (dwell_sec + 1)
+        obs[:, 55] = raw[:, self._TP] / (raw[:, self._DW] + 1.0)
+
+        # [56] exploit_rate = exploit_attempts / (step_count + 1)
+        obs[:, 56] = raw[:, self._EX] / (step_count + 1.0)
+
+        # [57] ghost_density = ghost_active / (services_touched + 1)
+        obs[:, 57] = raw[:, self._GH] / (raw[:, self._SV] + 1.0)
+
+        # [58] suspicion = evasion * (1 - p_real)
+        obs[:, 58] = np.minimum(raw[:, self._EV] / 3.0, 1.0) * (1.0 - raw[:, self._PR])
+
+        # [59-63] zeros (padding for future) — already zero from np.zeros init
+
         return obs
 
 
