@@ -55,10 +55,12 @@ class MetaController(nn.Module):
     Dueling architecture for stable Q-value estimation.
     """
 
-    def __init__(self, state_dim: int = STATE_DIM, n_strategies: int = N_STRATEGIES, hidden: int = 128):
+    def __init__(self, state_dim: int = STATE_DIM, n_strategies: int = N_STRATEGIES, hidden: int = 512):
         super().__init__()
         self.feature = nn.Sequential(
             nn.Linear(state_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
             nn.ReLU(),
             nn.Linear(hidden, hidden),
             nn.ReLU(),
@@ -87,10 +89,12 @@ class Controller(nn.Module):
     Input: state (10) + strategy one-hot (6) = 16-dim.
     """
 
-    def __init__(self, input_dim: int = CONTROLLER_INPUT_DIM, n_actions: int = N_ACTIONS, hidden: int = 256):
+    def __init__(self, input_dim: int = CONTROLLER_INPUT_DIM, n_actions: int = N_ACTIONS, hidden: int = 1024):
         super().__init__()
         self.feature = nn.Sequential(
             nn.Linear(input_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
             nn.ReLU(),
             nn.Linear(hidden, hidden),
             nn.ReLU(),

@@ -240,8 +240,8 @@ def train(
     meta_optimizer = optim.Adam(policy_hdqn.meta.parameters(), lr=meta_lr)
     ctrl_optimizer = optim.Adam(policy_hdqn.controller.parameters(), lr=ctrl_lr)
 
-    ctrl_replay = TensorReplayBuffer(500_000, CONTROLLER_INPUT_DIM, device)
-    meta_replay = TensorReplayBuffer(500_000, STATE_DIM, device)
+    ctrl_replay = TensorReplayBuffer(1_000_000, CONTROLLER_INPUT_DIM, device)
+    meta_replay = TensorReplayBuffer(1_000_000, STATE_DIM, device)
     meta_reward_norm = RewardNormalizer(clip=5.0)
 
     # Per-env tracking
