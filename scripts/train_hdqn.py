@@ -147,6 +147,42 @@ def intrinsic_reward_vec(
 
 
 # ═══════════════════════════════════════════════════════════════
+# Running Reward Normalizer
+# ═══════════════════════════════════════════════════════════════
+
+class RewardNormalizer:
+    """Welford online mean/std for reward normalization."""
+
+    def __init__(self, clip: float = 5.0):
+        self.clip = clip
+        self.mean = 0.0
+        self.var = 1.0
+        self.count = 0
+
+    def update(self, rewards: np.ndarray) -> None:
+        for r in rewards.flat:
+            self.count += 1
+            delta = r - self.mean
+            self.mean += delta / self.count
+            delta2 = r - self.mean
+            self.var += (delta * delta2 - self.var) / self.count
+
+    def normalize(self, rewards: np.ndarray) -> np.ndarray:
+        std = max(np.sqrt(self.var), 1e-6)
+        return np.clip((rewards - self.mean) / std, -self.clip, self.clip).astype(np.float32)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Soft Target Update (Polyak averaging)
+# ═══════════════════════════════════════════════════════════════
+
+def soft_update(target: nn.Module, source: nn.Module, tau: float) -> None:
+    """target = tau * source + (1 - tau) * target"""
+    for tp, sp in zip(target.parameters(), source.parameters()):
+        tp.data.mul_(1 - tau).add_(sp.data, alpha=tau)
+
+
+# ═══════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════
 
@@ -167,14 +203,16 @@ def train(
     total_steps: int = 5_000_000,
     batch_size: int = 1024,
     gamma: float = 0.99,
-    meta_lr: float = 1e-4,
+    meta_lr: float = 5e-5,
     ctrl_lr: float = 3e-4,
     eps_start: float = 1.0,
     eps_end: float = 0.02,
     eps_decay_steps: int = 300_000,
     strategy_horizon: int = 10,
-    target_update: int = 2000,
+    tau_ctrl: float = 0.005,
+    tau_meta: float = 0.002,
     train_every: int = 4,
+    meta_train_every: int = 8,
     max_time: int = 0,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -203,7 +241,8 @@ def train(
     ctrl_optimizer = optim.Adam(policy_hdqn.controller.parameters(), lr=ctrl_lr)
 
     ctrl_replay = TensorReplayBuffer(500_000, CONTROLLER_INPUT_DIM, device)
-    meta_replay = TensorReplayBuffer(100_000, STATE_DIM, device)
+    meta_replay = TensorReplayBuffer(500_000, STATE_DIM, device)
+    meta_reward_norm = RewardNormalizer(clip=5.0)
 
     # Per-env tracking
     strategies = np.full(n_envs, -1, dtype=np.int32)
@@ -245,10 +284,13 @@ def train(
             had_prev = need_strategy & (strategies >= 0)
             if had_prev.any():
                 idx_prev = np.where(had_prev)[0]
+                raw_meta_r = strategy_cum_rewards[idx_prev]
+                meta_reward_norm.update(raw_meta_r)
+                norm_meta_r = meta_reward_norm.normalize(raw_meta_r)
                 meta_replay.push_batch(
                     torch.from_numpy(strategy_start_states[idx_prev]).to(device),
                     torch.from_numpy(strategies[idx_prev].astype(np.int64)).to(device),
-                    torch.from_numpy(strategy_cum_rewards[idx_prev]).to(device),
+                    torch.from_numpy(norm_meta_r).to(device),
                     torch.from_numpy(states[idx_prev]).to(device),
                     torch.zeros(len(idx_prev), dtype=torch.bool, device=device),
                 )
@@ -328,10 +370,13 @@ def train(
             valid_done = dones & (strategies >= 0)
             if valid_done.any():
                 idx_d = np.where(valid_done)[0]
+                raw_meta_r = strategy_cum_rewards[idx_d]
+                meta_reward_norm.update(raw_meta_r)
+                norm_meta_r = meta_reward_norm.normalize(raw_meta_r)
                 meta_replay.push_batch(
                     torch.from_numpy(strategy_start_states[idx_d]).to(device),
                     torch.from_numpy(strategies[idx_d].astype(np.int64)).to(device),
-                    torch.from_numpy(strategy_cum_rewards[idx_d]).to(device),
+                    torch.from_numpy(norm_meta_r).to(device),
                     torch.from_numpy(next_states[idx_d]).to(device),
                     torch.ones(len(idx_d), dtype=torch.bool, device=device),
                 )
@@ -349,9 +394,8 @@ def train(
 
         states = next_states
 
-        # ── Train networks ──
+        # ── Train Controller ──
         if step % train_every == 0 and len(ctrl_replay) >= batch_size:
-            # Controller
             s_b, a_b, r_b, ns_b, d_b = ctrl_replay.sample(batch_size)
             current_q = policy_hdqn.controller(s_b).gather(1, a_b.unsqueeze(1)).squeeze(1)
             with torch.no_grad():
@@ -365,25 +409,28 @@ def train(
             ctrl_optimizer.step()
             recent_ctrl_loss.append(loss_ctrl.item())
 
-            # MetaController
-            if len(meta_replay) >= batch_size:
-                s_b, a_b, r_b, ns_b, d_b = meta_replay.sample(min(batch_size, len(meta_replay)))
-                current_q = policy_hdqn.meta(s_b).gather(1, a_b.unsqueeze(1)).squeeze(1)
-                with torch.no_grad():
-                    next_a = policy_hdqn.meta(ns_b).argmax(dim=1)
-                    next_q = target_meta(ns_b).gather(1, next_a.unsqueeze(1)).squeeze(1)
-                    expected_q = r_b + (gamma ** strategy_horizon) * next_q * (~d_b)
-                loss_meta = nn.SmoothL1Loss()(current_q, expected_q)
-                meta_optimizer.zero_grad()
-                loss_meta.backward()
-                nn.utils.clip_grad_norm_(policy_hdqn.meta.parameters(), 1.0)
-                meta_optimizer.step()
-                recent_meta_loss.append(loss_meta.item())
+            # Soft target update — controller
+            soft_update(target_ctrl, policy_hdqn.controller, tau_ctrl)
 
-        # Target network update
-        if step % target_update == 0:
-            target_meta.load_state_dict(policy_hdqn.meta.state_dict())
-            target_ctrl.load_state_dict(policy_hdqn.controller.state_dict())
+        # ── Train MetaController (less frequent) ──
+        if step % meta_train_every == 0 and len(meta_replay) >= batch_size:
+            s_b, a_b, r_b, ns_b, d_b = meta_replay.sample(min(batch_size, len(meta_replay)))
+            current_q = policy_hdqn.meta(s_b).gather(1, a_b.unsqueeze(1)).squeeze(1)
+            with torch.no_grad():
+                next_a = policy_hdqn.meta(ns_b).argmax(dim=1)
+                next_q = target_meta(ns_b).gather(1, next_a.unsqueeze(1)).squeeze(1)
+                # Clamp target Q to prevent runaway
+                next_q = next_q.clamp(-10.0, 10.0)
+                expected_q = r_b + (gamma ** strategy_horizon) * next_q * (~d_b)
+            loss_meta = nn.SmoothL1Loss()(current_q, expected_q)
+            meta_optimizer.zero_grad()
+            loss_meta.backward()
+            nn.utils.clip_grad_norm_(policy_hdqn.meta.parameters(), 0.5)
+            meta_optimizer.step()
+            recent_meta_loss.append(loss_meta.item())
+
+            # Soft target update — meta (slower tau)
+            soft_update(target_meta, policy_hdqn.meta, tau_meta)
 
         # ── Logging ──
         if step - last_log_step >= log_interval and len(completed_rewards) >= 10:
@@ -484,8 +531,26 @@ def train(
 
     avg_eval = np.mean(eval_rewards)
     std_eval = np.std(eval_rewards)
+
+    # Deception effectiveness metrics
+    # Episode outcome classification:
+    #   TP = attacker stayed full episode (successful deception)
+    #   FP = attacker evaded (evasion >= 5, deception failed to convince)
+    #   FN = attacker detected honeypot (p_real < 0.2, deception exposed)
+    #   TN = N/A (we always attempt deception)
+    # Precision = TP / (TP + FP) — of attempts, how many kept attacker
+    # Recall    = TP / (TP + FN) — of attackers, how many were fooled
+    tp = sum(1 for r in eval_rewards if r >= 40)  # full episode survival
+    fp = sum(1 for r in eval_rewards if 10 <= r < 40)  # partial, attacker evaded
+    fn = sum(1 for r in eval_rewards if r < 10)  # early termination, detected
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+
     print(f"  Avg reward : {avg_eval:.2f} +/- {std_eval:.2f}")
     print(f"  Min / Max  : {min(eval_rewards):.2f} / {max(eval_rewards):.2f}")
+    print(f"  Deception  : P={precision:.3f}  R={recall:.3f}  F1={f1:.3f}"
+          f"  (TP={tp} FP={fp} FN={fn})")
 
     print(f"\n  Strategy distribution:")
     total_s = max(eval_strategy_counts.sum(), 1)
@@ -522,6 +587,9 @@ def train(
         "best_step": best_step,
         "eval_avg_reward": round(float(avg_eval), 4),
         "eval_std_reward": round(float(std_eval), 4),
+        "eval_f1": round(f1, 4),
+        "eval_precision": round(precision, 4),
+        "eval_recall": round(recall, 4),
         "n_strategies": N_STRATEGIES,
         "n_actions": N_ACTIONS_FLAT,
         "strategy_horizon": strategy_horizon,
@@ -549,11 +617,17 @@ if __name__ == "__main__":
     parser.add_argument("--total-steps", type=int, default=5_000_000,
                         help="Total env steps (across all envs)")
     parser.add_argument("--batch-size", type=int, default=1024)
-    parser.add_argument("--meta-lr", type=float, default=1e-4)
+    parser.add_argument("--meta-lr", type=float, default=5e-5)
     parser.add_argument("--ctrl-lr", type=float, default=3e-4)
     parser.add_argument("--strategy-horizon", type=int, default=10)
+    parser.add_argument("--tau-ctrl", type=float, default=0.005,
+                        help="Soft target update rate for Controller")
+    parser.add_argument("--tau-meta", type=float, default=0.002,
+                        help="Soft target update rate for MetaController")
     parser.add_argument("--train-every", type=int, default=4,
-                        help="Train networks every N env steps")
+                        help="Train Controller every N env steps")
+    parser.add_argument("--meta-train-every", type=int, default=8,
+                        help="Train MetaController every N env steps")
     parser.add_argument("--max-time", type=int, default=0,
                         help="Max training time in seconds (0=unlimited)")
     args = parser.parse_args()
@@ -568,8 +642,9 @@ if __name__ == "__main__":
     print(f"  Steps      : {args.total_steps:,}")
     print(f"  Batch      : {args.batch_size}")
     print(f"  LR         : meta={args.meta_lr}  ctrl={args.ctrl_lr}")
+    print(f"  Tau        : ctrl={args.tau_ctrl}  meta={args.tau_meta}")
     print(f"  Horizon    : {args.strategy_horizon} steps/strategy")
-    print(f"  Train freq : every {args.train_every} steps")
+    print(f"  Train freq : ctrl every {args.train_every} / meta every {args.meta_train_every}")
     if args.max_time > 0:
         print(f"  Time Limit : {_fmt_time(args.max_time)}")
     print(f"{'═' * 60}")
@@ -581,6 +656,9 @@ if __name__ == "__main__":
         meta_lr=args.meta_lr,
         ctrl_lr=args.ctrl_lr,
         strategy_horizon=args.strategy_horizon,
+        tau_ctrl=args.tau_ctrl,
+        tau_meta=args.tau_meta,
         train_every=args.train_every,
+        meta_train_every=args.meta_train_every,
         max_time=args.max_time,
     )
