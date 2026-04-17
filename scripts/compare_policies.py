@@ -85,6 +85,30 @@ class DQNPolicy:
             return self.net(t).argmax(dim=1).item()
 
 
+class GameEQPolicy:
+    """Game-theoretic equilibrium defender — trained via alternating best-response."""
+    name = "Game-EQ"
+    def __init__(self, model_path: str, device: str = "cuda"):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("train_dqn", Path(__file__).parent / "train_dqn.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        DQN = mod.DQN
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
+        state_dim = ckpt.get("state_dim", 10)
+        n_actions = ckpt.get("n_actions", 5)
+        self.net = DQN(state_dim, n_actions).to(self.device)
+        self.net.load_state_dict(ckpt["policy_state_dict"])
+        self.net.eval()
+        self._skills = ckpt.get("skills", [])
+
+    def select(self, state: np.ndarray) -> int:
+        with torch.no_grad():
+            t = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+            return self.net(t).argmax(dim=1).item()
+
+
 class HDQNPolicy:
     """Hierarchical DQN — MetaController + Controller on 45 parameterized actions."""
     name = "h-DQN"
@@ -441,6 +465,14 @@ def main():
         print(f"  h-DQN model not found: {hdqn_path}")
         print(f"    Run: python3 scripts/train_hdqn.py --episodes 3000")
 
+    game_path = Path("results/models/game_defender_final.pt")
+    if game_path.exists():
+        policies.append(GameEQPolicy(str(game_path), device))
+        print(f"  Game-EQ model: {game_path}")
+    else:
+        print(f"  Game-EQ model not found: {game_path}")
+        print(f"    Run: python3 scripts/train_game.py --rounds 4")
+
     # Evaluate each policy
     results = []
     for policy in policies:
@@ -461,6 +493,75 @@ def main():
     save_results = [{k: v for k, v in r.items() if k != "rewards_raw"} for r in results]
     output_path.write_text(json.dumps(save_results, indent=2))
     print(f"\n  Results saved: {output_path}")
+
+    # ── Cross-Play Matrix (Game-Theoretic Evaluation) ─────────────
+    game_def_path = Path("results/models/game_defender_final.pt")
+    game_atk_path = Path("results/models/game_attacker_final.pt")
+    if game_def_path.exists() and game_atk_path.exists():
+        print("\n\n  ═══ Cross-Play Matrix (Defender vs Attacker) ═══\n")
+        from honey_drone.markov_game_env import (
+            MarkovGameEnv,
+            RandomPolicy as GameRandom,
+            GreedyDefenderPolicy,
+            GreedyAttackerPolicy,
+            N_DEFENDER_ACTIONS,
+            N_ATTACKER_ACTIONS,
+            DEFENDER_OBS_DIM,
+            ATTACKER_OBS_DIM,
+        )
+        from train_game import evaluate_matchup
+
+        # Build policy sets
+        def _load_game_policy(path, n_actions, state_dim):
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("train_dqn", Path(__file__).parent / "train_dqn.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            net = mod.DQN(state_dim, n_actions).to(device)
+            ckpt = torch.load(path, map_location=device, weights_only=False)
+            net.load_state_dict(ckpt["policy_state_dict"])
+            net.eval()
+            class _P:
+                def __init__(self, n, d):
+                    self._net = n; self._dev = d
+                def select(self, obs):
+                    with torch.no_grad():
+                        s = torch.FloatTensor(obs).unsqueeze(0).to(self._dev)
+                        return self._net(s).argmax(dim=1).item()
+            return _P(net, torch.device(device))
+
+        def_pols = {
+            "Random": GameRandom(N_DEFENDER_ACTIONS),
+            "Greedy": GreedyDefenderPolicy(),
+            "Game-EQ": _load_game_policy(game_def_path, N_DEFENDER_ACTIONS, DEFENDER_OBS_DIM),
+        }
+        atk_pols = {
+            "Random": GameRandom(N_ATTACKER_ACTIONS),
+            "Greedy": GreedyAttackerPolicy(),
+            "Game-EQ": _load_game_policy(game_atk_path, N_ATTACKER_ACTIONS, ATTACKER_OBS_DIM),
+        }
+
+        n_eval = min(args.episodes, 300)
+        cross_play = {}
+        header = f"  {'Def \\\\ Atk':>12s}"
+        for a_name in atk_pols:
+            header += f" | {a_name:>10s}"
+        print(header)
+        print("  " + "-" * len(header))
+
+        for d_name, d_pol in def_pols.items():
+            row = f"  {d_name:>12s}"
+            cross_play[d_name] = {}
+            for a_name, a_pol in atk_pols.items():
+                result = evaluate_matchup(d_pol, a_pol, n_eval)
+                cross_play[d_name][a_name] = result
+                row += f" | {result['avg_r_def']:>+10.2f}"
+            print(row)
+
+        # Save cross-play
+        cp_path = Path("results/cross_play_matrix.json")
+        cp_path.write_text(json.dumps(cross_play, indent=2, default=str))
+        print(f"\n  Cross-play matrix saved: {cp_path}")
 
 
 if __name__ == "__main__":

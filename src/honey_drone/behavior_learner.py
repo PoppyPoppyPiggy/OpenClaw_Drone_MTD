@@ -74,6 +74,7 @@ class BehaviorLearner:
         self._dqn_net = None
         self._hdqn = None
         self._device = None
+        self._game_eq_loaded = False
         self._step_count = 0
         self._current_strategy = None
         self._strategy_steps = 0
@@ -91,16 +92,18 @@ class BehaviorLearner:
             3: 4,  # EXFIL  → fake_key
         }
 
-        # Try loading h-DQN first, then DQN
+        # Try loading: h-DQN → game-eq → DQN (priority order)
         if policy_mode in ("auto", "hdqn"):
             self._try_load_hdqn()
-        if self._hdqn is None and policy_mode in ("auto", "dqn"):
+        if self._hdqn is None and policy_mode in ("auto", "game", "dqn"):
+            self._try_load_game_eq()
+        if self._hdqn is None and self._dqn_net is None and policy_mode in ("auto", "dqn"):
             self._try_load_dqn()
 
         if self._hdqn:
             mode_str = "h-DQN"
         elif self._dqn_net:
-            mode_str = "DQN"
+            mode_str = "Game-EQ" if self._game_eq_loaded else "DQN"
         elif policy_mode == "random":
             mode_str = "random"
         else:
@@ -156,6 +159,57 @@ class BehaviorLearner:
         except Exception as e:
             logger.warning("hdqn_load_failed", error=str(e))
             self._hdqn = None
+
+    def _try_load_game_eq(self) -> None:
+        """Load game-theoretic equilibrium defender policy if available."""
+        model_path = self._model_dir / "game_defender_final.pt"
+        if not model_path.exists():
+            return
+
+        try:
+            import torch
+            import torch.nn as nn
+
+            class DQN(nn.Module):
+                def __init__(self, state_dim, n_actions, hidden=128):
+                    super().__init__()
+                    self.feature = nn.Sequential(
+                        nn.Linear(state_dim, hidden), nn.ReLU(),
+                        nn.Linear(hidden, hidden), nn.ReLU(),
+                    )
+                    self.value = nn.Sequential(
+                        nn.Linear(hidden, hidden // 2), nn.ReLU(),
+                        nn.Linear(hidden // 2, 1),
+                    )
+                    self.advantage = nn.Sequential(
+                        nn.Linear(hidden, hidden // 2), nn.ReLU(),
+                        nn.Linear(hidden // 2, n_actions),
+                    )
+                def forward(self, x):
+                    feat = self.feature(x)
+                    val = self.value(feat)
+                    adv = self.advantage(feat)
+                    return val + adv - adv.mean(dim=-1, keepdim=True)
+
+            self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            ckpt = torch.load(str(model_path), map_location=self._device, weights_only=False)
+            state_dim = ckpt.get("state_dim", STATE_DIM)
+            n_actions = ckpt.get("n_actions", N_ACTIONS)
+            self._dqn_net = DQN(state_dim, n_actions).to(self._device)
+            self._dqn_net.load_state_dict(ckpt["policy_state_dict"])
+            self._dqn_net.eval()
+            self._game_eq_loaded = True
+
+            logger.info(
+                "game_eq_policy_loaded",
+                drone_id=self._drone_id,
+                path=str(model_path),
+                training_rounds=ckpt.get("training_rounds", "?"),
+                skills=ckpt.get("skills", []),
+                device=str(self._device),
+            )
+        except Exception as e:
+            logger.warning("game_eq_load_failed", error=str(e))
 
     def _try_load_dqn(self) -> None:
         """Load DQN policy from checkpoint if available."""
