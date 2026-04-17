@@ -46,6 +46,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import subprocess
+import threading
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from honey_drone.markov_game_env import (
@@ -56,6 +59,134 @@ from honey_drone.markov_game_env import (
     DEFENDER_OBS_DIM,
     ATTACKER_OBS_DIM,
 )
+
+
+# ═══════════════════════════════════════════════════════════════
+# System Resource Monitor
+# ═══════════════════════════════════════════════════════════════
+
+class ResourceMonitor:
+    """Background thread that samples GPU/CPU/RAM usage."""
+
+    def __init__(self, interval: float = 2.0):
+        self._interval = interval
+        self._running = False
+        self._thread = None
+        self._lock = threading.Lock()
+        # Latest snapshot
+        self.gpu_util: int = 0       # GPU utilization %
+        self.gpu_mem_used: int = 0   # GPU memory used MB
+        self.gpu_mem_total: int = 0  # GPU memory total MB
+        self.gpu_temp: int = 0       # GPU temperature C
+        self.gpu_power: float = 0.0  # GPU power draw W
+        self.cpu_util: float = 0.0   # CPU utilization %
+        self.ram_used_gb: float = 0.0
+        self.ram_total_gb: float = 0.0
+        # Peak tracking
+        self.peak_gpu_util: int = 0
+        self.peak_gpu_mem: int = 0
+        self.peak_gpu_power: float = 0.0
+        self._samples = 0
+
+    def start(self) -> None:
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=3)
+
+    def _loop(self) -> None:
+        while self._running:
+            self._sample()
+            time.sleep(self._interval)
+
+    def _sample(self) -> None:
+        try:
+            # GPU via nvidia-smi
+            result = subprocess.run(
+                ["nvidia-smi",
+                 "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if result.returncode == 0:
+                parts = result.stdout.strip().split(", ")
+                with self._lock:
+                    self.gpu_util = int(parts[0])
+                    self.gpu_mem_used = int(parts[1])
+                    self.gpu_mem_total = int(parts[2])
+                    self.gpu_temp = int(parts[3])
+                    self.gpu_power = float(parts[4])
+                    self.peak_gpu_util = max(self.peak_gpu_util, self.gpu_util)
+                    self.peak_gpu_mem = max(self.peak_gpu_mem, self.gpu_mem_used)
+                    self.peak_gpu_power = max(self.peak_gpu_power, self.gpu_power)
+        except Exception:
+            pass
+
+        try:
+            # CPU via /proc/stat (Linux)
+            with open("/proc/stat") as f:
+                line = f.readline()
+            parts = line.split()
+            idle = int(parts[4])
+            total = sum(int(p) for p in parts[1:])
+            if not hasattr(self, "_prev_idle"):
+                self._prev_idle = idle
+                self._prev_total = total
+            else:
+                d_idle = idle - self._prev_idle
+                d_total = total - self._prev_total
+                self._prev_idle = idle
+                self._prev_total = total
+                if d_total > 0:
+                    with self._lock:
+                        self.cpu_util = round((1 - d_idle / d_total) * 100, 1)
+        except Exception:
+            pass
+
+        try:
+            # RAM via /proc/meminfo
+            with open("/proc/meminfo") as f:
+                lines = f.readlines()
+            mem = {}
+            for line in lines[:5]:
+                k, v = line.split(":")
+                mem[k.strip()] = int(v.strip().split()[0])
+            total_kb = mem.get("MemTotal", 0)
+            avail_kb = mem.get("MemAvailable", mem.get("MemFree", 0))
+            with self._lock:
+                self.ram_total_gb = total_kb / 1e6
+                self.ram_used_gb = (total_kb - avail_kb) / 1e6
+        except Exception:
+            pass
+
+        self._samples += 1
+
+    def format_line(self) -> str:
+        """One-line resource summary for training log."""
+        with self._lock:
+            return (
+                f"GPU {self.gpu_util:3d}% "
+                f"VRAM {self.gpu_mem_used:5d}/{self.gpu_mem_total}MB "
+                f"{self.gpu_temp}C {self.gpu_power:.0f}W | "
+                f"CPU {self.cpu_util:5.1f}% "
+                f"RAM {self.ram_used_gb:.1f}/{self.ram_total_gb:.0f}GB"
+            )
+
+    def format_summary(self) -> str:
+        """Summary with peak values."""
+        with self._lock:
+            return (
+                f"  Peak GPU: {self.peak_gpu_util}% util, "
+                f"{self.peak_gpu_mem}MB VRAM, "
+                f"{self.peak_gpu_power:.0f}W\n"
+                f"  Current:  GPU {self.gpu_util}%, "
+                f"CPU {self.cpu_util:.1f}%, "
+                f"RAM {self.ram_used_gb:.1f}/{self.ram_total_gb:.0f}GB"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -445,6 +576,7 @@ def train_agent_gpu(
     replay_size: int = 500_000,
     target_update_freq: int = 500,
     device: torch.device = None,
+    monitor: ResourceMonitor | None = None,
 ) -> tuple[nn.Module, list[float]]:
     """
     Train one agent using fully GPU-resident training.
@@ -559,10 +691,11 @@ def train_agent_gpu(
             avg = np.mean(episode_rewards[-200:]) if len(episode_rewards) >= 200 else np.mean(episode_rewards)
             elapsed = time.time() - t_start
             sps = step_count / max(elapsed, 0.01)
+            res = f" | {monitor.format_line()}" if monitor else ""
             print(f"    [{role}] {step_count/1000:.0f}k/{n_steps/1000:.0f}k steps  "
-                  f"eps={eps:.3f}  avg_r={avg:.2f}  "
-                  f"episodes={len(episode_rewards)}  "
-                  f"{sps/1000:.0f}k steps/s")
+                  f"avg_r={avg:.2f}  "
+                  f"{sps/1000:.0f}k sps  "
+                  f"eps={len(episode_rewards)}{res}")
 
     return policy_net, episode_rewards
 
@@ -631,6 +764,12 @@ def main():
     env = CudaMarkovGameEnv(n_envs=n_envs, max_steps=200, device=str(device))
     log = {"rounds": [], "n_envs": n_envs, "device": str(device)}
 
+    # Start resource monitor
+    monitor = ResourceMonitor(interval=2.0)
+    monitor.start()
+    time.sleep(0.5)  # let first sample complete
+    print(f"  Baseline: {monitor.format_line()}\n")
+
     current_def_net = None
     current_atk_net = None
     t_total = time.time()
@@ -656,6 +795,7 @@ def main():
             n_steps=n_steps,
             batch_size=8192,
             device=device,
+            monitor=monitor,
         )
 
         # Save
@@ -684,6 +824,7 @@ def main():
         })
 
     elapsed = time.time() - t_total
+    monitor.stop()
 
     # Save finals
     if current_def_net:
@@ -714,6 +855,8 @@ def main():
     total_steps = n_steps * rounds
     print(f"  Total steps: {total_steps:,} ({total_steps/elapsed:,.0f} steps/s)")
     print(f"  Checkpoints: results/models/game_*_final.pt")
+    print(f"\n  --- Resource Usage ---")
+    print(monitor.format_summary())
     print(f"{'='*65}")
 
     # Auto-run analysis
