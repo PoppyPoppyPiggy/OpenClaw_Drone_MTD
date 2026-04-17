@@ -344,25 +344,15 @@ class BehaviorLearner:
         }
 
     def _context_to_state(self, ctx: dict) -> np.ndarray:
-        """Convert context dict to DQN-compatible 10-dim state vector."""
-        phase_map = {"recon": 0, "exploit": 1, "persist": 2, "exfil": 3}
-        phase_name = ""
-        # Determine phase from fingerprints
-        max_level = ctx.get("max_level", 0)
-        if max_level >= 3:
-            phase_val = 2  # PERSIST
-            phase_name = "persist"
-        elif max_level >= 2:
-            phase_val = 1  # EXPLOIT
-            phase_name = "exploit"
-        elif ctx.get("avg_commands", 0) > 20:
-            phase_val = 1
-            phase_name = "exploit"
-        else:
-            phase_val = 0  # RECON
-            phase_name = "recon"
+        """Convert context dict to DQN-compatible 10-dim state vector.
 
-        ctx["phase_name"] = phase_name
+        Uses actual phase from OpenClawAgent fingerprint (phase_val key)
+        instead of inferring from max_level.
+        """
+        # Use actual phase from agent's phase detection (0-3 int)
+        phase_val = ctx.get("phase_val", 0)
+        phase_names = {0: "recon", 1: "exploit", 2: "persist", 3: "exfil"}
+        ctx["phase_name"] = phase_names.get(phase_val, "recon")
 
         return np.array([
             phase_val / 3.0,

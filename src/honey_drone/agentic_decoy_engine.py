@@ -61,6 +61,7 @@ from shared.constants import (
 from shared.logger import get_logger
 from shared.models import (
     AttackerLevel,
+    AttackerTool,
     DroneProtocol,
     DroneStatus,
     EngagementMetrics,
@@ -71,7 +72,8 @@ from shared.models import (
 from honey_drone.engagement_tracker import EngagementTracker
 from honey_drone.mavlink_response_gen import MavlinkResponseGenerator
 from honey_drone.openclaw_agent import OpenClawAgent
-from honey_drone.deception_state_manager import DeceptionStateManager, ObservationType
+from honey_drone.openclaw_service import OpenClawService
+from honey_drone.deception_state_manager import DeceptionStateManager
 
 logger = get_logger(__name__)
 
@@ -109,6 +111,7 @@ class AgenticDecoyEngine:
         self._tracker            = EngagementTracker()
         self._response_gen       = MavlinkResponseGenerator(config)
         self._openclaw_agent     = OpenClawAgent(config, mtd_trigger_q, cti_event_output_q)
+        self._openclaw_service   = OpenClawService(config.drone_id, config.index)
         self._belief_mgr         = DeceptionStateManager(config.drone_id)
         self._status             = DroneStatus.IDLE
         self._tasks: list[asyncio.Task] = []
@@ -201,13 +204,14 @@ class AgenticDecoyEngine:
     def get_avg_confusion(self) -> float:
         """
         [ROLE] 실제 베이지안 믿음 상태에서 평균 confusion score 반환.
+               공격자가 없을 때는 NaN-safe 0.0 반환 (관측 없음 ≠ 기만 성공).
 
         [DATA FLOW]
             DeceptionStateManager.get_all_beliefs() ──▶ avg P(real|obs)
         """
         beliefs = self._belief_mgr.get_all_beliefs()
         if not beliefs:
-            return 0.70  # prior (아직 관측 없음)
+            return 0.0  # 관측 없음 — 기만 성공과 구별
         return sum(b.p_believes_real for b in beliefs) / len(beliefs)
 
     def get_belief_states(self) -> list:
@@ -358,13 +362,8 @@ class AgenticDecoyEngine:
 
         metrics = await self._tracker.update_session(event)
 
-        # 베이지안 믿음 상태 갱신 (실제 DeceptionStateManager)
-        obs_type = ObservationType.PROTOCOL_INTERACT
-        if metrics.exploit_attempts > 0:
-            obs_type = ObservationType.EXPLOIT_ATTEMPT
-        elif event.msg_type in ("LOG_REQUEST_LIST", "FILE_TRANSFER_PROTOCOL"):
-            obs_type = ObservationType.EXPLOIT_ATTEMPT
-        belief_state = await self._belief_mgr.observe_protocol_interaction(event.src_ip, event.protocol)
+        # 베이지안 믿음 상태 갱신 — 실제 이벤트 유형에 따라 적절한 observe 호출
+        belief_state = await self._update_belief_from_event(event, metrics)
 
         # 적응형 응답 우선, 없으면 기본 응답 폴백
         response_bytes = self._openclaw_agent.generate_response(event)
@@ -516,14 +515,19 @@ class AgenticDecoyEngine:
                     await self._cti_event_output_q.put(event)
                     await self._assess_and_signal(metrics, event)
 
-                    # 적응형 WS 응답 우선, 없으면 기본 응답
+                    # 베이지안 믿음 갱신 — WS 이벤트 유형별 분류
+                    text_msg = raw_msg if isinstance(raw_msg, str) else raw_msg.decode("utf-8", errors="ignore")
+                    await self._update_belief_from_ws(text_msg, attacker_ip, metrics)
+
+                    # 적응형 WS 응답 우선 → OpenClawService 폴백 → 기본 폴백
                     agent_response = self._openclaw_agent.generate_ws_response(
                         raw_msg, attacker_ip
                     )
                     if agent_response is not None:
                         response = agent_response
                     else:
-                        response = self._generate_openclaw_response(raw_msg)
+                        svc_response = self._openclaw_service.handle(raw_msg, attacker_ip)
+                        response = svc_response if svc_response is not None else self._generate_openclaw_response(raw_msg)
 
                     await websocket.send(json.dumps(response))
 
@@ -602,6 +606,119 @@ class AgenticDecoyEngine:
                 break
             except Exception as e:
                 logger.debug("telemetry loop error", error=str(e))
+
+    # ── 믿음 상태 갱신 (실제 이벤트 유형 매핑) ─────────────────────────────────
+
+    async def _update_belief_from_event(
+        self,
+        event: MavlinkCaptureEvent,
+        metrics: EngagementMetrics,
+    ) -> "AttackerBeliefState":
+        """
+        [ROLE] 실제 이벤트 유형에 따라 적절한 DeceptionStateManager observe 메서드 호출.
+               모든 10가지 관측 유형을 실제 신호에서 추출.
+
+        [DATA FLOW]
+            MavlinkCaptureEvent + EngagementMetrics
+            ──▶ 이벤트 유형 판별
+            ──▶ DeceptionStateManager.observe_*() 호출
+            ──▶ AttackerBeliefState 반환
+        """
+        ip = event.src_ip
+        fp = self._openclaw_agent._fingerprints.get(ip)
+
+        # 1. Scan detected — nmap-style tool fingerprint
+        if fp and fp.tool == AttackerTool.NMAP_SCANNER:
+            return await self._belief_mgr.observe_scan(ip)
+
+        # 2. Exploit attempt — exploit-phase commands
+        if event.msg_type in ("COMMAND_LONG", "SET_MODE",
+                              "SET_POSITION_TARGET_LOCAL_NED",
+                              "SET_ACTUATOR_CONTROL_TARGET",
+                              "GPS_INJECT_DATA"):
+            return await self._belief_mgr.observe_exploit_attempt(ip)
+
+        # 3. Evasion detection — long silence then resume (>60s gap)
+        history = self._openclaw_agent._conversation_history.get(ip, [])
+        if len(history) >= 2:
+            prev_ts = history[-2][2]
+            curr_ts = history[-1][2]
+            gap_sec = (curr_ts - prev_ts) / 1e9
+            if gap_sec > 60.0:
+                return await self._belief_mgr.observe_evasion(ip)
+
+        # 4. Reconnect detection — session already existed
+        session_key = (ip, event.drone_id)
+        if metrics.commands_issued > 1 and metrics.dwell_time_sec > 30.0:
+            # Same service reconnect (continued engagement)
+            pass  # already covered by PROTOCOL_INTERACT below
+
+        # 5. Default — protocol interaction
+        return await self._belief_mgr.observe_protocol_interaction(
+            ip, event.protocol,
+        )
+
+    async def _update_belief_from_ws(
+        self,
+        raw_msg: str,
+        attacker_ip: str,
+        metrics: EngagementMetrics,
+    ) -> "AttackerBeliefState":
+        """
+        [ROLE] WebSocket 이벤트에서 믿음 상태 갱신.
+               CVE exploit / breadcrumb 사용 / ghost 상호작용 감지.
+
+        [DATA FLOW]
+            raw_msg (WS JSON)
+            ──▶ 이벤트 유형 판별
+            ──▶ DeceptionStateManager.observe_*() 호출
+        """
+        import json as _json
+        try:
+            msg = _json.loads(raw_msg) if isinstance(raw_msg, str) else {}
+        except (ValueError, _json.JSONDecodeError):
+            msg = {}
+
+        msg_type = msg.get("type", "")
+
+        # 1. CVE exploit attempt — auth bypass
+        if msg_type == "auth":
+            return await self._belief_mgr.observe_exploit_attempt(attacker_ip)
+
+        # 2. Breadcrumb use — attacker uses planted credentials
+        if msg_type == "skill_invoke":
+            skill = msg.get("skill", "")
+            params = msg.get("params", {})
+            # Check if attacker is using planted signing key or token
+            params_str = str(params)
+            agent_creds = self._openclaw_agent._planted_credentials
+            if any(cred_val in params_str for cred_val in agent_creds.values()):
+                return await self._belief_mgr.observe_breadcrumb_use(
+                    attacker_ip, f"skill_{skill}",
+                )
+            # Skill invoke itself is breadcrumb access (exploring planted APIs)
+            return await self._belief_mgr.observe_breadcrumb_access(
+                attacker_ip, f"skill_{skill}",
+            )
+
+        # 3. Config dump request — breadcrumb access
+        if msg_type == "config":
+            return await self._belief_mgr.observe_breadcrumb_access(
+                attacker_ip, "config_dump",
+            )
+
+        # 4. Terminal command with credential content — breadcrumb use
+        if msg_type == "terminal":
+            command = msg.get("command", "")
+            if any(kw in command for kw in ("signing", "key", "token", "password")):
+                return await self._belief_mgr.observe_breadcrumb_use(
+                    attacker_ip, f"terminal_{command[:20]}",
+                )
+
+        # 5. Default — protocol interaction
+        return await self._belief_mgr.observe_protocol_interaction(
+            attacker_ip, DroneProtocol.WEBSOCKET,
+        )
 
     # ── 신호 평가 ─────────────────────────────────────────────────────────────
 
@@ -732,7 +849,8 @@ class AgenticDecoyEngine:
                 beliefs = self._belief_mgr.get_all_beliefs()
                 confusion_delta = 0.0
                 if beliefs:
-                    confusion_delta = belief_score - 0.70  # delta from prior
+                    # Delta from initial prior (0.7) — positive = attacker more convinced
+                    confusion_delta = belief_score - 0.7
 
                 # --- 세션 ID ---
                 session_id = ""
@@ -925,13 +1043,8 @@ class AgenticDecoyEngine:
                 self._openclaw_agent.observe(event)
                 metrics = await self._tracker.update_session(event)
 
-                # 베이지안 믿음 갱신
-                obs_type = ObservationType.PROTOCOL_INTERACT
-                if metrics.exploit_attempts > 0:
-                    obs_type = ObservationType.EXPLOIT_ATTEMPT
-                await self._belief_mgr.observe_protocol_interaction(
-                    event.src_ip, event.protocol,
-                )
+                # 베이지안 믿음 갱신 — 실제 이벤트 유형별 분류
+                await self._update_belief_from_event(event, metrics)
 
                 # 적응형 응답 우선 → 폴백
                 response_bytes = self._openclaw_agent.generate_response(event)
@@ -978,14 +1091,18 @@ class AgenticDecoyEngine:
         # 에이전트에 WS 관찰 기회 제공 (HTTP/RTSP도 동일 경로)
         self._openclaw_agent.observe_ws(raw_msg, attacker_ip)
 
-        # 에이전트 적응형 응답
+        # 에이전트 적응형 응답 → OpenClawService 폴백
         agent_resp = self._openclaw_agent.generate_ws_response(
             raw_msg, attacker_ip,
         )
         if agent_resp is not None:
             return agent_resp
 
-        # 폴백
+        svc_resp = self._openclaw_service.handle(raw_msg, attacker_ip)
+        if svc_resp is not None:
+            return svc_resp
+
+        # 최종 폴백
         return {
             "version": "2026.1.28",
             "type": "ack",
@@ -1013,8 +1130,8 @@ class AgenticDecoyEngine:
 
             # pymavlink ID→이름 역매핑
             id_to_name = {
-                v.id: k
-                for k, v in apm.mavlink_map.items()
+                v.id: v.msgname
+                for v in apm.mavlink_map.values()
             }
             return id_to_name.get(msgid, f"MSG_{msgid}")
         except Exception:

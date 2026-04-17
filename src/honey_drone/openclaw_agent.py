@@ -78,6 +78,10 @@ from shared.models import (
     HoneyDroneConfig,
     MavlinkCaptureEvent,
 )
+from evaluation.deception_metrics import (
+    SessionDeceptionMetrics,
+    compute_confusion_score_realtime,
+)
 from honey_drone.behavior_learner import BehaviorLearner
 
 logger = get_logger(__name__)
@@ -161,6 +165,10 @@ class OpenClawAgent:
         self._conversation_history: dict[str, list[tuple[str, str, int]]] = {}
         # attacker_ip → set[service_name]
         self._services_touched: dict[str, set[str]] = {}
+
+        # ── 기만 품질 실측 (per-attacker) ─────────────────────────
+        # attacker_ip → SessionDeceptionMetrics (SALC/SALNLC/FALC counts)
+        self._session_deception: dict[str, SessionDeceptionMetrics] = {}
 
         # ── 에이전트 자체 상태 ────────────────────────────────────
         self._current_sysid: int = 1 + config.index
@@ -373,25 +381,43 @@ class OpenClawAgent:
         if fp is None:
             return None
 
+        # 기만 품질 추적용 세션 메트릭
+        sdm = self._session_deception.setdefault(ip, SessionDeceptionMetrics())
+
         # 도구별 응답 범위 제한
         if fp.tool == AttackerTool.NMAP_SCANNER:
             # nmap에게는 배너만 (HEARTBEAT 응답만)
             if event.msg_type != "HEARTBEAT":
+                sdm.falc += 1  # 공격 실패 + 논리적 응답 (의도적 미응답)
                 return None
+            sdm.salc += 1  # 공격 성공 + 논리 일관성 유지
             return self._build_heartbeat()
 
         # 단계별 응답 전략
         phase = fp.attack_phase
+        result: Optional[bytes] = None
         if phase == AttackPhase.RECON:
-            return self._response_recon(event)
-        if phase == AttackPhase.EXPLOIT:
-            return self._response_exploit(event)
-        if phase == AttackPhase.PERSIST:
-            return self._response_persist(event)
-        if phase == AttackPhase.EXFIL:
-            return self._response_exfil(event)
+            result = self._response_recon(event)
+        elif phase == AttackPhase.EXPLOIT:
+            result = self._response_exploit(event)
+        elif phase == AttackPhase.PERSIST:
+            result = self._response_persist(event)
+        elif phase == AttackPhase.EXFIL:
+            result = self._response_exfil(event)
 
-        return None
+        # SALC/FALC tracking
+        if result is not None:
+            sdm.salc += 1   # 응답 생성 = 공격자에게 "성공" 신호
+        else:
+            sdm.falc += 1   # 미응답 = 의도적 거부
+
+        # honeypot_detected from belief state
+        if self._belief_mgr_ref:
+            belief = self._belief_mgr_ref.get_belief(ip)
+            if belief and belief.p_believes_real < 0.3:
+                sdm.honeypot_detected = True
+
+        return result
 
     def generate_ws_response(self, raw_msg: Union[str, bytes], attacker_ip: str) -> Optional[dict]:
         """
@@ -505,46 +531,85 @@ class OpenClawAgent:
 
     def _build_mab_context(self) -> dict:
         """
-        Build context vector from REAL system state.
+        Build context vector matching BehaviorLearner's 10-dim state.
         All values sourced from DeceptionStateManager + EngagementTracker.
+
+        State mapping (must match behavior_learner._context_to_state):
+          [0] phase       → actual attack phase from fingerprint
+          [1] max_level   → attacker tool sophistication
+          [2] avg_p_real  → Bayesian belief P(real)
+          [3] avg_dwell   → average dwell time
+          [4] avg_commands→ average command count
+          [5] services    → services touched
+          [6] exploits    → exploit attempt count
+          [7] ghost       → active ghost ports
+          [8] time_phase  → time in current phase
+          [9] evasion     → evasion signal count
         """
-        attacker_count = len(self._fingerprints)
         avg_dwell = 0.0
         avg_cmds = 0.0
         max_level = 0
         avg_services = 0.0
+        exploit_attempts = 0
+        time_in_phase = 0.0
+        evasion_signals = 0
+        phase_val = 0  # RECON default
 
         if self._fingerprints:
             dwells = []
             cmds_counts = []
+            level_map = {
+                AttackerTool.UNKNOWN: 0, AttackerTool.NMAP_SCANNER: 0,
+                AttackerTool.MAVPROXY_GCS: 1, AttackerTool.DRONEKIT_SCRIPT: 2,
+                AttackerTool.METASPLOIT_MODULE: 3, AttackerTool.CUSTOM_EXPLOIT: 4,
+            }
+            phase_map = {
+                AttackPhase.RECON: 0, AttackPhase.EXPLOIT: 1,
+                AttackPhase.PERSIST: 2, AttackPhase.EXFIL: 3,
+            }
             for fp in self._fingerprints.values():
                 d = (time.time_ns() - fp.first_seen_ns) / 1e9
                 dwells.append(d)
                 cmds_counts.append(len(fp.command_sequence))
             avg_dwell = sum(dwells) / len(dwells)
             avg_cmds = sum(cmds_counts) / len(cmds_counts)
-            level_map = {
-                AttackerTool.UNKNOWN: 0, AttackerTool.NMAP_SCANNER: 0,
-                AttackerTool.MAVPROXY_GCS: 1, AttackerTool.DRONEKIT_SCRIPT: 2,
-                AttackerTool.METASPLOIT_MODULE: 3, AttackerTool.CUSTOM_EXPLOIT: 4,
-            }
             max_level = max(level_map.get(fp.tool, 0) for fp in self._fingerprints.values())
             avg_services = sum(
                 len(self._services_touched.get(ip, set())) for ip in self._fingerprints
             ) / len(self._fingerprints)
 
+            # Actual phase from most recent fingerprint
+            last_fp = list(self._fingerprints.values())[-1]
+            phase_val = phase_map.get(last_fp.attack_phase, 0)
+
+            # Time in current phase
+            if last_fp.phase_changed_at_ns > 0:
+                time_in_phase = (time.time_ns() - last_fp.phase_changed_at_ns) / 1e9
+
+        # Exploit attempts from EngagementTracker
+        if self._tracker_ref:
+            all_metrics = self._tracker_ref.get_all_active_metrics(self._config.drone_id)
+            exploit_attempts = sum(m.exploit_attempts for m in all_metrics)
+
+        # Evasion signals from DeceptionStateManager
+        if self._belief_mgr_ref:
+            beliefs = self._belief_mgr_ref.get_all_beliefs()
+            evasion_signals = sum(b.evasion_events for b in beliefs)
+
         # Real P(real) from DeceptionStateManager
         avg_p_real = self._get_real_p_real()
 
         return {
-            "attacker_count": attacker_count,
-            "avg_dwell_sec": avg_dwell,
-            "avg_commands": avg_cmds,
             "max_level": max_level,
             "avg_p_real": avg_p_real,
+            "avg_dwell_sec": avg_dwell,
+            "avg_commands": avg_cmds,
             "services_touched": avg_services,
+            "exploit_attempts": exploit_attempts,
             "ghost_active": len(self._active_ghost_ports),
-            "time_since_last": 0.0,
+            "time_in_phase": time_in_phase,
+            "evasion_signals": evasion_signals,
+            "phase_val": phase_val,
         }
 
     def _get_real_p_real(self) -> float:
@@ -573,17 +638,21 @@ class OpenClawAgent:
         """
         Reward based on REAL measurable outcomes of the action:
 
-        R = w1 * Δ_belief + w2 * engagement_signal
+        R = w1 * Δ_belief + w2 * engagement_signal + w3 * deception_quality
 
         Δ_belief = P(real)_after - P(real)_before
           → Positive if our action made attacker believe more (deception worked)
-          → Negative if attacker became suspicious (deception backfired)
           → Normalized from [-0.2, +0.2] to [0, 1]
 
-        engagement_signal = 1 if attacker sent new packets after our action, else 0
+        engagement_signal = new_packets / 3 (capped at 1.0)
           → Directly measures: did our proactive action trigger a response?
 
-        Combined: 70% belief change + 30% engagement
+        deception_quality = confusion_score from HoneyGPT Eq.H1-H4
+          → accuracy * 0.333 + temptation * 0.333 + cloaking * 0.334
+          → Measures: are our responses realistic and luring?
+
+        Combined: 50% belief + 25% engagement + 25% quality
+        [REF] Eq.H1-H4 HoneyGPT (USENIX 2025)
         """
         # Component 1: Bayesian belief change (from DeceptionStateManager)
         post_p_real = self._get_real_p_real()
@@ -596,7 +665,15 @@ class OpenClawAgent:
         new_packets = post_packets - self._pre_action_packets
         r_engage = min(1.0, new_packets / 3.0)  # 3+ new packets = full reward
 
-        reward = 0.7 * r_belief + 0.3 * r_engage
+        # Component 3: Deception quality (accuracy + temptation + cloaking)
+        sessions = list(self._session_deception.values())
+        if sessions:
+            quality = compute_confusion_score_realtime(sessions)
+            r_quality = quality["confusion_score"]
+        else:
+            r_quality = 0.5  # neutral when no sessions yet
+
+        reward = 0.50 * r_belief + 0.25 * r_engage + 0.25 * r_quality
 
         logger.info(
             "mab_reward_computed",
@@ -609,6 +686,7 @@ class OpenClawAgent:
             new_packets=new_packets,
             r_belief=round(r_belief, 4),
             r_engage=round(r_engage, 4),
+            r_quality=round(r_quality, 4),
             reward=round(reward, 4),
         )
 
@@ -836,11 +914,27 @@ class OpenClawAgent:
             reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
         ) -> None:
             try:
+                # Get attacker IP for belief tracking
+                peername = writer.get_extra_info("peername")
+                ghost_attacker_ip = peername[0] if peername else ""
+
                 writer.write(banner)
                 await writer.drain()
+
+                # Notify belief manager — ghost connect (shallow)
+                if self._belief_mgr_ref and ghost_attacker_ip:
+                    await self._belief_mgr_ref.observe_ghost_interaction(
+                        ghost_attacker_ip, f"ghost_tcp:{ghost_port}", deep=False,
+                    )
+
                 # 공격자 데이터를 최대 30초간 대기 (체류 시간 연장)
                 try:
-                    await asyncio.wait_for(reader.read(4096), timeout=30.0)
+                    data = await asyncio.wait_for(reader.read(4096), timeout=30.0)
+                    # If attacker sent data, that's deep interaction
+                    if data and self._belief_mgr_ref and ghost_attacker_ip:
+                        await self._belief_mgr_ref.observe_ghost_interaction(
+                            ghost_attacker_ip, f"ghost_tcp:{ghost_port}", deep=True,
+                        )
                 except asyncio.TimeoutError:
                     pass
             except Exception:
@@ -1259,7 +1353,14 @@ class OpenClawAgent:
         """
         history = self._conversation_history.get(attacker_ip, [])
         old_phase = fp.attack_phase
-        cmd_types = {h[0] for h in history}
+
+        # Sliding window: 최근 10개 명령으로 현재 공격 단계 판별.
+        # 전체 이력이 아닌 최근 행동 기준으로 판단하여:
+        #   - 단계 de-escalation 허용 (EXPLOIT → RECON 복귀 가능)
+        #   - h-DQN MetaController가 단계 전환 전략을 학습 가능
+        _PHASE_WINDOW = 10
+        recent = history[-_PHASE_WINDOW:] if len(history) > _PHASE_WINDOW else history
+        cmd_types = {h[0] for h in recent}
 
         # EXFIL: 로그/파일 데이터 요청 — 가장 구체적이므로 최우선 검사
         _EXFIL_CMDS = {"LOG_REQUEST_LIST", "LOG_REQUEST_DATA",
