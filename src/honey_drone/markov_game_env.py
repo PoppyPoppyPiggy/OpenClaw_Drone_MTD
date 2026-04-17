@@ -251,8 +251,16 @@ class MarkovGameEnv:
         atk_disconnected = False
 
         if atk_action == 6:  # disconnect
-            atk_disconnected = True
-        elif atk_action == 5:  # lateral_pivot
+            # Disconnect only effective after minimum engagement (20 steps)
+            # Real attackers don't leave immediately — they need time to assess
+            if s.step_count >= 20:
+                atk_disconnected = True
+            else:
+                # Too early to leave — treat as continue_recon instead
+                atk_action = 0
+                atk_intel = self._atk_intel_gain[phase, 0]
+                atk_engaged = True
+        if atk_action == 5:  # lateral_pivot (not elif — disconnect may have fallen through)
             # Partial session reset — keeps intel, resets phase
             s.phase = 0
             s.time_in_phase = 0.0
@@ -340,10 +348,11 @@ class MarkovGameEnv:
 
         if atk_disconnected:
             done = True
-            # Defender: partial win (got some dwell time)
-            r_def += min(s.dwell_sec / 300.0, 2.0)
-            # Attacker: keeps accumulated intel
-            r_atk += s.intel_score * 0.5
+            # Defender: win proportional to dwell time extracted
+            r_def += min(s.dwell_sec / 300.0, 2.0) + 1.0
+            # Attacker: penalized for leaving early, keeps partial intel
+            dwell_ratio = min(s.dwell_sec / 600.0, 1.0)
+            r_atk += s.intel_score * 0.3 - 2.0 * (1.0 - dwell_ratio)
 
         elif s.p_real < 0.2:
             done = True
@@ -594,7 +603,12 @@ class VecMarkovGameEnv:
         )
 
         # ── Attacker skill effects ──
-        atk_disconnect = atk_actions == 6
+        # Disconnect only after 20 steps (realistic: attackers don't quit immediately)
+        can_disc = raw[:, self._SC] >= 20
+        real_disc = (atk_actions == 6) & can_disc
+        atk_actions = np.where((atk_actions == 6) & ~can_disc, 0, atk_actions)
+
+        atk_disconnect = real_disc
         atk_lateral = atk_actions == 5
         atk_verify = atk_actions == 4
         atk_engage_mask = (atk_actions <= 3) & ~atk_disconnect
@@ -708,10 +722,11 @@ class VecMarkovGameEnv:
         done_evasion = raw[:, self._EV] >= 5
 
         # Terminal rewards
+        dwell_ratio = np.minimum(raw[:, self._DW] / 600.0, 1.0)
         r_def = np.where(done_disconnect,
-                         r_def + np.minimum(raw[:, self._DW] / 300.0, 2.0), r_def)
+                         r_def + np.minimum(raw[:, self._DW] / 300.0, 2.0) + 1.0, r_def)
         r_atk = np.where(done_disconnect,
-                         r_atk + raw[:, self._IS] * 0.5, r_atk)
+                         r_atk + raw[:, self._IS] * 0.3 - 2.0 * (1.0 - dwell_ratio), r_atk)
 
         r_def = np.where(done_preal & ~done_disconnect, r_def - 5.0, r_def)
         r_atk = np.where(done_preal & ~done_disconnect, r_atk + 3.0, r_atk)
@@ -837,11 +852,21 @@ class SingleAgentWrapper:
 
 
 class RandomPolicy:
-    """Uniform random policy."""
+    """Random policy with realistic action weighting.
+    Disconnect/lateral have lower probability (real attackers don't quit easily).
+    """
     def __init__(self, n_actions: int) -> None:
         self.n_actions = n_actions
+        if n_actions == N_ATTACKER_ACTIONS:
+            # Attacker: actions 0-4 weighted equally, 5-6 (lateral/disconnect) rare
+            w = [1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.1]
+            total = sum(w)
+            self._probs = [x / total for x in w]
+        else:
+            self._probs = [1.0 / n_actions] * n_actions
+
     def select(self, obs: np.ndarray) -> int:
-        return random.randint(0, self.n_actions - 1)
+        return random.choices(range(self.n_actions), weights=self._probs, k=1)[0]
 
 
 class GreedyDefenderPolicy:

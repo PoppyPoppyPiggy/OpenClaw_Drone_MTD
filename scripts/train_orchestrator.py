@@ -413,7 +413,12 @@ class CudaMarkovGameEnv:
         raw[:, self._CP] = torch.where((def_a == 4) & ~silence, raw[:, self._CP] + 1, raw[:, self._CP])
 
         # Attacker effects
-        atk_disc = atk_a == 6
+        # Disconnect only after 20 steps
+        can_disc = raw[:, self._SC] >= 20
+        real_disc = (atk_a == 6) & can_disc
+        atk_a = torch.where((atk_a == 6) & ~can_disc, torch.zeros_like(atk_a), atk_a)
+
+        atk_disc = real_disc
         atk_lat = atk_a == 5
         atk_ver = atk_a == 4
         atk_eng = (atk_a <= 3) & ~atk_disc
@@ -502,8 +507,9 @@ class CudaMarkovGameEnv:
         d_steps = raw[:, self._SC] >= self.max_steps
         d_evas = raw[:, self._EV] >= 5
 
-        r_def = torch.where(d_disc, r_def + (raw[:, self._DW] / 300).clamp(max=2), r_def)
-        r_atk = torch.where(d_disc, r_atk + raw[:, self._IS] * 0.5, r_atk)
+        dwell_ratio = (raw[:, self._DW] / 600).clamp(max=1)
+        r_def = torch.where(d_disc, r_def + (raw[:, self._DW] / 300).clamp(max=2) + 1, r_def)
+        r_atk = torch.where(d_disc, r_atk + raw[:, self._IS] * 0.3 - 2 * (1 - dwell_ratio), r_atk)
         r_def = torch.where(d_preal & ~d_disc, r_def - 5, r_def)
         r_atk = torch.where(d_preal & ~d_disc, r_atk + 3, r_atk)
         r_def = torch.where(d_steps & ~d_preal & ~d_disc, r_def + 3 + raw[:, self._PR] * 2, r_def)
@@ -635,7 +641,14 @@ def train_agent_gpu(
             if opponent_net is not None:
                 opp_actions = opponent_net(opp_obs).argmax(dim=1)
             else:
-                opp_actions = torch.randint(0, opp_n_actions, (N,), device=device)
+                # Weighted random: disconnect/lateral rare (realistic attacker)
+                if opp_n_actions == N_ATTACKER_ACTIONS:
+                    weights = torch.tensor([1,1,1,1,1,0.2,0.1], device=device)
+                    opp_actions = torch.multinomial(
+                        weights.expand(N, -1), 1,
+                    ).squeeze(1)
+                else:
+                    opp_actions = torch.randint(0, opp_n_actions, (N,), device=device)
 
         # Step
         if role == "defender":
