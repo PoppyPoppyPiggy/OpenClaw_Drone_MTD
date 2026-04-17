@@ -63,9 +63,10 @@ from honey_drone.markov_game_env import (
 # ═══════════════════════════════════════════════════════════════
 
 class FastDQN(nn.Module):
-    """Dueling DQN optimized for GPU throughput."""
+    """Dueling DQN optimized for GPU throughput.
+    hidden=512, 3-layer feature extractor for RTX 5090 SM saturation."""
 
-    def __init__(self, state_dim: int, n_actions: int, hidden: int = 256):
+    def __init__(self, state_dim: int, n_actions: int, hidden: int = 512):
         super().__init__()
         self.feature = nn.Sequential(
             nn.Linear(state_dim, hidden),
@@ -435,7 +436,7 @@ def train_agent_gpu(
     env: CudaMarkovGameEnv,
     opponent_net: nn.Module | None,
     n_steps: int = 500_000,
-    batch_size: int = 4096,
+    batch_size: int = 8192,
     gamma: float = 0.99,
     lr: float = 5e-4,
     eps_start: float = 1.0,
@@ -462,8 +463,8 @@ def train_agent_gpu(
     opp_n_actions = N_ATTACKER_ACTIONS if role == "defender" else N_DEFENDER_ACTIONS
 
     # Networks
-    policy_net = FastDQN(state_dim, n_actions, hidden=256).to(device)
-    target_net = FastDQN(state_dim, n_actions, hidden=256).to(device)
+    policy_net = FastDQN(state_dim, n_actions, hidden=512).to(device)
+    target_net = FastDQN(state_dim, n_actions, hidden=512).to(device)
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
@@ -618,9 +619,10 @@ def main():
     print(f"  Parallel:   {n_envs} environments")
     print(f"  Steps/round:{n_steps:,}")
     print(f"  Rounds:     {rounds}")
-    print(f"  Batch size: 4096")
+    print(f"  Batch size: 8192")
+    print(f"  Network:    512 hidden (3-layer Dueling DQN)")
     print(f"  Replay:     500k GPU-resident")
-    print(f"  Optimizations: torch.compile + GPU replay + zero-copy")
+    print(f"  Optimizations: GPU replay + zero-copy + large batch")
     print(f"{'='*65}\n")
 
     model_dir = Path("results/models")
@@ -652,7 +654,7 @@ def main():
             env=env,
             opponent_net=opp_compiled,
             n_steps=n_steps,
-            batch_size=4096,
+            batch_size=8192,
             device=device,
         )
 
