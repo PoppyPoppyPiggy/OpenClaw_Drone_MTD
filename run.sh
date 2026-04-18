@@ -87,6 +87,8 @@ TS="$(date +%Y%m%d_%H%M%S)"
 LOG_ROOT="${ROOT}/results/logs/run_${TS}"
 mkdir -p "${LOG_ROOT}"
 MAIN_LOG="${LOG_ROOT}/run.log"
+# Child scripts (verify_container_entry) honour this to co-locate their logs.
+export MIRAGE_LOG_ROOT="${LOG_ROOT}"
 
 # Mirror everything to main log (keep stdout for terminal display)
 exec > >(tee -a "${MAIN_LOG}") 2>&1
@@ -165,6 +167,29 @@ if [[ $SKIP_INSTALL -eq 0 ]]; then
 else
     step "skipping pip install (--skip-install)"
     [[ -d .venv ]] && source .venv/bin/activate
+fi
+
+step "Reclaiming ownership of results/ (if previous docker run wrote as root)"
+USER_NAME="$(id -un)"
+FOREIGN=$(find results -maxdepth 4 -not -user "$USER_NAME" 2>/dev/null)
+FOREIGN_COUNT=$(printf '%s' "$FOREIGN" | grep -c . || true)
+if [[ $FOREIGN_COUNT -gt 0 ]]; then
+    warn "${FOREIGN_COUNT} files not owned by ${USER_NAME}"
+    if sudo -n true 2>/dev/null; then
+        sudo chown -R "$(id -u):$(id -g)" results/ && ok "chown -R done"
+    else
+        # Fallback: we own the directories, so we can rm files even if
+        # they're root-owned. Preserve structure.
+        warn "sudo requires password — deleting foreign files instead"
+        printf '%s\n' "$FOREIGN" | while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            if [[ -f "$f" ]]; then
+                rm -f "$f" && echo "    removed $f" || warn "failed: $f"
+            fi
+        done
+    fi
+else
+    ok "no foreign-owned files"
 fi
 
 step "Bootstrapping config/.env"

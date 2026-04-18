@@ -152,8 +152,11 @@ async def start_http():
     app.router.add_get("/upload", breadcrumb_endpoint)
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", 80).start()
-    _log("http_started", port=80)
+    # Use 8080 (unprivileged) so the container can run as non-root uid 1000.
+    # Host port mapping in compose (e.g. 127.0.0.1:8081:8080) still presents
+    # the breadcrumb service on the attacker-facing host port.
+    await web.TCPSite(runner, "0.0.0.0", 8080).start()
+    _log("http_started", port=8080)
 
     # Metrics endpoint
     metrics_app = web.Application()
@@ -330,7 +333,7 @@ async def start_engine():
         sitl_port=FCU_PORT,
         mavlink_port=14550,
         webclaw_port=18789,
-        http_port=80,
+        http_port=8080,
         rtsp_port=8554,
         fcu_host=FCU_HOST or f"fcu-{DRONE_ID.replace('_', '-')}",
     )
@@ -571,7 +574,7 @@ async def main():
     print("═══════════════════════════════════════════════════", flush=True)
     print(f"  MIRAGE-UAS Honeydrone [{DRONE_ID}]", flush=True)
     print(f"  OpenClaw AgenticDecoyEngine (REAL deception)", flush=True)
-    print(f"  MAVLink:14550 WS:18789 HTTP:80 RTSP:8554", flush=True)
+    print(f"  MAVLink:14550 WS:18789 HTTP:8080 RTSP:8554", flush=True)
     print("═══════════════════════════════════════════════════", flush=True)
 
     # Start HTTP breadcrumbs + ghost services (non-blocking)
@@ -581,9 +584,13 @@ async def main():
     # Start real AgenticDecoyEngine (MAVLink + WebSocket with OODA)
     await start_engine()
 
-    # Mark engine running
-    Path(RESULTS_DIR).mkdir(parents=True, exist_ok=True)
-    (Path(RESULTS_DIR) / ".engine_running").write_text("real_openclaw")
+    # Mark engine running — best-effort. If /results is a bind mount with
+    # restrictive ownership, don't crash the engine over a status file.
+    try:
+        Path(RESULTS_DIR).mkdir(parents=True, exist_ok=True)
+        (Path(RESULTS_DIR) / ".engine_running").write_text("real_openclaw")
+    except (PermissionError, OSError) as _e:
+        _log("engine_running_write_skipped", error=str(_e))
 
     # Run all background tasks
     tasks = [
@@ -605,7 +612,7 @@ async def main():
             await engine.stop()
         try:
             (Path(RESULTS_DIR) / ".engine_running").unlink()
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             pass
 
 

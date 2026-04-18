@@ -252,7 +252,12 @@ he.start_ghost_services = start_ghost_patched
 asyncio.run(he.main())
 ''')
 
-    log_path = RESULTS / "logs" / f"container_entry_{args.drone_id}.log"
+    # When run.sh orchestrates us, MIRAGE_LOG_ROOT points at the per-run log
+    # directory so the subprocess log lives next to phase_01b_*.log for easy
+    # inspection. Stand-alone runs fall back to results/logs/.
+    log_root_env = os.environ.get("MIRAGE_LOG_ROOT")
+    log_dir = Path(log_root_env) if log_root_env else (RESULTS / "logs")
+    log_path = log_dir / f"container_entry_{args.drone_id}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_fh = log_path.open("w")
 
@@ -344,7 +349,24 @@ asyncio.run(he.main())
             proc.kill()
             proc.wait(timeout=3)
         log_fh.close()
+        # Dump the shim stderr/stdout to this process's stdout so everything
+        # ends up in the caller's phase log (run.sh tees via run_phase).
         print(f"  Full entry log: {log_path}")
+        try:
+            raw = log_path.read_text(errors="ignore")
+        except Exception:
+            raw = ""
+        # Only surface ERROR / Traceback / warn lines by default — full log
+        # is already on disk. This keeps phase_01b readable.
+        noteworthy = [
+            ln for ln in raw.splitlines()
+            if any(k in ln for k in ("Traceback", "Error", "ERROR", "engine_running_write_skipped"))
+        ]
+        if noteworthy:
+            print(f"  --- entry log highlights ({len(noteworthy)} lines) ---")
+            for ln in noteworthy[-20:]:
+                print(f"    {ln}")
+            print(f"  (see {log_path} for full trace)")
 
 
 if __name__ == "__main__":

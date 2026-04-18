@@ -23,15 +23,25 @@ RUN pip install --no-cache-dir \
     pymavlink websockets aiohttp python-dotenv structlog stix2 numpy && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-COPY src/ /app/src/
-COPY config/.env /app/config/.env
-COPY docker/honeydrone_entry.py /app/entry.py
+# Create non-root user with UID 1000 — matches the typical host user on WSL2
+# Ubuntu / most Linux installs. Required so files written to the bind-mounted
+# /results volume end up owned by the host user, not by host root.
+RUN useradd -u 1000 -m -s /usr/sbin/nologin mirage
+
+COPY --chown=mirage:mirage src/ /app/src/
+COPY --chown=mirage:mirage config/.env /app/config/.env
+COPY --chown=mirage:mirage docker/honeydrone_entry.py /app/entry.py
+
+# /results is the bind-mount target — create with mirage ownership so the
+# container can write metrics even when the volume is mounted by root.
+RUN mkdir -p /results && chown -R mirage:mirage /app /results
 
 WORKDIR /app
+USER mirage
 
-EXPOSE 14550/udp 18789/tcp 80/tcp 2222/tcp 8554/tcp 19000-19020/tcp 14560-14570/udp
+EXPOSE 14550/udp 18789/tcp 8080/tcp 2222/tcp 8554/tcp 19000-19020/tcp 14560-14570/udp
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=15s \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:80/health')"
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
 
 CMD ["python3", "-u", "/app/entry.py"]

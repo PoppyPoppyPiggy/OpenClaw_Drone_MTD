@@ -125,7 +125,7 @@ services:
         condition: service_healthy
     ports:
       - "0.0.0.0:14551:14550/udp"   # MAVLink ◀攻 (OpenClaw OODA)
-      - "127.0.0.1:8081:80"          # HTTP breadcrumbs ◀攻
+      - "127.0.0.1:8081:8080"          # HTTP breadcrumbs ◀攻
       - "0.0.0.0:8554:8554/tcp"      # RTSP ◀攻
       - "127.0.0.1:18789:18789/tcp"  # WebSocket (OpenClaw emulation) ◀攻
     environment:
@@ -138,7 +138,7 @@ services:
       - MAVLINK_PORT=14550
       - WEBCLAW_PORT=18789
       - RTSP_PORT=8554
-      - HTTP_PORT=80
+      - HTTP_PORT=8080
       - CTI_TAP=cti-interceptor:19551
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DEFENDER_POLICY=${DEFENDER_POLICY:-signaling_eq}
@@ -183,7 +183,7 @@ services:
         condition: service_healthy
     ports:
       - "0.0.0.0:14552:14550/udp"
-      - "127.0.0.1:8082:80"
+      - "127.0.0.1:8082:8080"
       - "0.0.0.0:8555:8554/tcp"
       - "127.0.0.1:18790:18789/tcp"
     environment:
@@ -196,7 +196,7 @@ services:
       - MAVLINK_PORT=14550
       - WEBCLAW_PORT=18789
       - RTSP_PORT=8554
-      - HTTP_PORT=80
+      - HTTP_PORT=8080
       - CTI_TAP=cti-interceptor:19552
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DEFENDER_POLICY=${DEFENDER_POLICY:-signaling_eq}
@@ -240,7 +240,7 @@ services:
         condition: service_healthy
     ports:
       - "0.0.0.0:14553:14550/udp"
-      - "127.0.0.1:8083:80"
+      - "127.0.0.1:8083:8080"
       - "0.0.0.0:8556:8554/tcp"
       - "127.0.0.1:18791:18789/tcp"
     environment:
@@ -253,7 +253,7 @@ services:
       - MAVLINK_PORT=14550
       - WEBCLAW_PORT=18789
       - RTSP_PORT=8554
-      - HTTP_PORT=80
+      - HTTP_PORT=8080
       - CTI_TAP=cti-interceptor:19553
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DEFENDER_POLICY=${DEFENDER_POLICY:-signaling_eq}

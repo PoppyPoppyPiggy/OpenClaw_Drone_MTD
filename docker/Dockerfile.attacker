@@ -24,8 +24,14 @@ RUN pip install --no-cache-dir \
     websockets \
     aiohttp
 
-WORKDIR /app
+# Non-root runtime (UID 1000) so files written to the /results bind mount are
+# owned by the host user, not root. nmap still works as unprivileged user for
+# TCP connect scans (no SYN raw sockets needed).
+RUN useradd -u 1000 -m -s /usr/sbin/nologin attacker
 
-COPY scripts/attacker_sim.py /app/attacker_sim.py
+WORKDIR /app
+COPY --chown=attacker:attacker scripts/attacker_sim.py /app/attacker_sim.py
+
+USER attacker
 
 ENTRYPOINT ["python", "attacker_sim.py"]
