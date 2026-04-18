@@ -65,9 +65,35 @@ from honey_drone.markov_game_env import (
     DEFENDER_OBS_DIM,
     ATTACKER_OBS_DIM,
 )
+from honey_drone.signaling_game_solver import SignalingGameSolver
 
 # Reuse DQN + ReplayBuffer from train_dqn.py
 from train_dqn import DQN, ReplayBuffer
+
+
+class SignalingEqDefenderPolicy:
+    """
+    Frozen Perfect Bayesian Equilibrium defender for game-theoretic
+    attacker training. Solver is kept fixed during attacker learning so
+    we can measure how well an adaptive attacker exploits the equilibrium.
+
+    [REF] Crawford & Sobel (1982), Pawlick & Zhu (2021) Eq.10
+    """
+    def __init__(self, kappa: float = 0.5, temperature: float = 0.8,
+                 epsilon: float = 0.10, learning_rate: float = 0.0):
+        # learning_rate=0 → EMA static (frozen equilibrium)
+        self._s = SignalingGameSolver(
+            cost_sensitivity_kappa=kappa,
+            temperature=temperature,
+            exploration_epsilon=epsilon,
+            learning_rate=learning_rate,
+        )
+
+    def select(self, obs):
+        phase = int(round(float(obs[0]) * 3))
+        mu = float(obs[2]) if len(obs) > 2 else 0.7
+        idx, _, _ = self._s.select_skill(mu_a=mu, phase=max(0, min(3, phase)))
+        return idx
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -256,24 +282,132 @@ def compute_exploitability(
 # Main: Alternating Best-Response
 # ═══════════════════════════════════════════════════════════════
 
+def _build_frozen_signaling_defender(args) -> SignalingEqDefenderPolicy:
+    return SignalingEqDefenderPolicy(
+        kappa=args.sig_kappa,
+        temperature=args.sig_temperature,
+        epsilon=args.sig_epsilon,
+        learning_rate=0.0,          # frozen equilibrium during attacker BR
+    )
+
+
+def train_attacker_vs_frozen_solver(args, device: torch.device) -> dict:
+    """
+    [ROLE] Train adaptive attacker DQN against FROZEN SignalingGameSolver defender.
+           Measures whether an optimally-trained attacker can exploit the
+           equilibrium — C3 robustness claim.
+
+    [OUTPUT]
+        results/models/game_attacker_vs_signaling.pt
+        results/models/game_vs_signaling_log.json
+    """
+    model_dir = Path("results/models")
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    frozen_def = _build_frozen_signaling_defender(args)
+    print(f"\n  Frozen Signaling-Eq defender: κ={args.sig_kappa} τ={args.sig_temperature} ε={args.sig_epsilon}")
+    print(f"  Training attacker DQN for {args.episodes} episodes...\n")
+
+    atk_net, atk_rewards = train_one_side(
+        role="attacker",
+        opponent_policy=frozen_def,
+        episodes=args.episodes,
+        device=device,
+    )
+
+    ckpt_path = model_dir / "game_attacker_vs_signaling.pt"
+    torch.save({
+        "policy_state_dict": atk_net.state_dict(),
+        "role": "attacker",
+        "opponent": "signaling_eq_frozen",
+        "state_dim": ATTACKER_OBS_DIM,
+        "n_actions": N_ATTACKER_ACTIONS,
+        "skills": ATTACKER_SKILLS,
+        "sig_kappa": args.sig_kappa,
+        "sig_temperature": args.sig_temperature,
+        "sig_epsilon": args.sig_epsilon,
+    }, ckpt_path)
+    print(f"    Saved: {ckpt_path}")
+
+    # Wrap for eval
+    class _AtkPolicy:
+        def __init__(self, net, dev):
+            self.net = net; self.dev = dev
+        def select(self, obs):
+            with torch.no_grad():
+                s = torch.FloatTensor(obs).unsqueeze(0).to(self.dev)
+                return self.net(s).argmax(dim=1).item()
+
+    trained_atk = _AtkPolicy(atk_net, device)
+
+    print(f"\n  Evaluating adaptive attacker vs frozen signaling-eq defender...")
+    eval_result = evaluate_matchup(frozen_def, trained_atk, args.eval_episodes)
+
+    # Baseline: random attacker vs same frozen defender (how much did training help?)
+    random_atk = RandomPolicy(N_ATTACKER_ACTIONS)
+    base_result = evaluate_matchup(frozen_def, random_atk, args.eval_episodes)
+
+    # Exploitability gap: attacker improvement from random → best-response
+    exploit_gap = eval_result["avg_r_atk"] - base_result["avg_r_atk"]
+
+    print(f"  Random attacker:   r_def={base_result['avg_r_def']:+.3f}  r_atk={base_result['avg_r_atk']:+.3f}")
+    print(f"  Trained attacker:  r_def={eval_result['avg_r_def']:+.3f}  r_atk={eval_result['avg_r_atk']:+.3f}")
+    print(f"  Exploitability:    Δr_atk = {exploit_gap:+.3f}  (lower = solver more robust)")
+
+    log = {
+        "mode": "attacker_vs_frozen_signaling_eq",
+        "sig_kappa": args.sig_kappa,
+        "sig_temperature": args.sig_temperature,
+        "sig_epsilon": args.sig_epsilon,
+        "episodes": args.episodes,
+        "baseline_random_attacker": base_result,
+        "trained_attacker": eval_result,
+        "exploitability_gap": round(exploit_gap, 4),
+        "training_rewards_tail": [float(r) for r in atk_rewards[-100:]],
+    }
+    log_path = model_dir / "game_vs_signaling_log.json"
+    log_path.write_text(json.dumps(log, indent=2, default=str))
+    print(f"\n  Log: {log_path}")
+    return log
+
+
 def main():
     parser = argparse.ArgumentParser(description="Game-Theoretic Deception Training")
     parser.add_argument("--rounds", type=int, default=3, help="Number of BR rounds")
     parser.add_argument("--episodes", type=int, default=1000, help="Episodes per round")
     parser.add_argument("--eval-episodes", type=int, default=300, help="Eval episodes")
+    parser.add_argument(
+        "--defender-policy", choices=["dqn", "signaling_eq"], default="dqn",
+        help="dqn = classic alternating BR; "
+             "signaling_eq = freeze solver, only train attacker (C3 robustness)",
+    )
+    parser.add_argument("--sig-kappa", type=float, default=0.5,
+                        help="Signaling solver cost sensitivity (only with --defender-policy signaling_eq)")
+    parser.add_argument("--sig-temperature", type=float, default=0.8,
+                        help="Signaling solver softmax temperature")
+    parser.add_argument("--sig-epsilon", type=float, default=0.10,
+                        help="Signaling solver ε-exploration rate")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n{'='*60}")
     print(f"  MIRAGE-UAS Game-Theoretic Training")
-    print(f"  Algorithm: Alternating Best-Response (Fictitious Play)")
+    print(f"  Mode: {args.defender_policy}")
     print(f"  Game: General-Sum Markov Game")
     print(f"  Defender Skills: {N_DEFENDER_ACTIONS} ({', '.join(DEFENDER_SKILLS)})")
     print(f"  Attacker Skills: {N_ATTACKER_ACTIONS} ({', '.join(ATTACKER_SKILLS)})")
-    print(f"  Rounds: {args.rounds}")
-    print(f"  Episodes/round: {args.episodes}")
     print(f"  Device: {device}")
     print(f"{'='*60}\n")
+
+    # ── Signaling-Eq frozen-defender mode: only attacker learns ──
+    if args.defender_policy == "signaling_eq":
+        train_attacker_vs_frozen_solver(args, device)
+        return
+
+    # ── Classic alternating best-response (both sides train) ──
+    print(f"  Algorithm: Alternating Best-Response (Fictitious Play)")
+    print(f"  Rounds: {args.rounds}")
+    print(f"  Episodes/round: {args.episodes}\n")
 
     model_dir = Path("results/models")
     model_dir.mkdir(parents=True, exist_ok=True)

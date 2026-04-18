@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-compare_policies.py — 4-Policy Comparison Experiment
+compare_policies.py — N-Policy Comparison Experiment
 
-Compares: Random / Greedy / DQN / Full Agent
+Compares: Random / Greedy / DQN / h-DQN / Game-EQ / Signaling-EQ / Hybrid
 on identical DeceptionEnv episodes for fair evaluation.
+
+Signaling-EQ and Hybrid are NEW in the Signaling Game extension (Eq.SG,
+Crawford-Sobel 1982 / Pawlick-Zhu 2021 Eq.10) — they are ZERO-SHOT
+defenders (no offline training) that use the closed-form PBE solver.
 
 Usage:
     python3 scripts/compare_policies.py
@@ -16,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -108,6 +113,77 @@ class GameEQPolicy:
         with torch.no_grad():
             t = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             return self.net(t).argmax(dim=1).item()
+
+
+class SignalingEQPolicy:
+    """
+    Signaling-Eq defender — Perfect Bayesian Equilibrium skill selector.
+    Closed-form (no training). Uses μ_A (belief) + phase from the state
+    observation and returns a skill index via cost-aware softmax mixing.
+
+    State layout (both DeceptionEnv 10-dim and MarkovGameEnv defender obs):
+        state[0] = phase/3.0
+        state[2] = μ_A (attacker's posterior belief)
+
+    [REF] Crawford & Sobel (1982), Pawlick & Zhu (2021) Eq.10
+    """
+    name = "Signaling-EQ"
+
+    def __init__(self, kappa: float = 0.5, temperature: float = 0.8,
+                 epsilon: float = 0.10, learning_rate: float = 0.1,
+                 device: str = "cpu"):
+        from honey_drone.signaling_game_solver import SignalingGameSolver
+        self._solver = SignalingGameSolver(
+            cost_sensitivity_kappa=kappa,
+            temperature=temperature,
+            exploration_epsilon=epsilon,
+            learning_rate=learning_rate,
+        )
+        self._last_mu = 0.7
+        self._last_idx = -1
+
+    def select(self, state: np.ndarray) -> int:
+        phase = int(round(float(state[0]) * 3))
+        phase = max(0, min(3, phase))
+        mu_a = float(state[2]) if len(state) > 2 else 0.7
+        idx, _name, _dbg = self._solver.select_skill(mu_a=mu_a, phase=phase)
+        # EMA feedback: rough Δμ proxy (actual μ is consumed next call)
+        if self._last_idx >= 0:
+            self._solver.observe_outcome(
+                skill_idx=self._last_idx,
+                delta_mu=mu_a - self._last_mu,
+                reward=0.0,   # compare_policies has no reward channel here
+            )
+        self._last_idx = idx
+        self._last_mu = mu_a
+        return idx
+
+
+class HybridPolicy:
+    """
+    Hybrid defender: alternates Signaling-EQ and DQN on odd/even steps.
+    Aims to combine short-horizon equilibrium (SG) with long-horizon
+    value (DQN). Falls back to Signaling-EQ when the DQN checkpoint
+    is missing.
+    """
+    name = "Hybrid"
+
+    def __init__(self, dqn_path: str | None, device: str = "cpu"):
+        self._sig = SignalingEQPolicy()
+        self._dqn = None
+        if dqn_path is not None and Path(dqn_path).exists():
+            try:
+                self._dqn = DQNPolicy(dqn_path, device=device)
+            except Exception as e:
+                print(f"  [Hybrid] DQN load failed, falling back to pure Signaling-EQ: {e}")
+                self._dqn = None
+        self._step = 0
+
+    def select(self, state: np.ndarray) -> int:
+        self._step += 1
+        if self._dqn is not None and (self._step % 2 == 0):
+            return self._dqn.select(state)
+        return self._sig.select(state)
 
 
 class HDQNPolicy:
@@ -434,12 +510,13 @@ def main():
     parser.add_argument("--output", type=str, default="results/policy_comparison.json")
     args = parser.parse_args()
 
-    print("╔═══════════════════════════════════════════════════╗")
-    print("║  MIRAGE-UAS  4-Policy Comparison                 ║")
-    print("╠═══════════════════════════════════════════════════╣")
-    print(f"║  Episodes:  {args.episodes:<38}║")
-    print("║  Policies:  Random / Greedy / DQN / h-DQN        ║")
-    print("╚═══════════════════════════════════════════════════╝")
+    print("╔═══════════════════════════════════════════════════════╗")
+    print("║  MIRAGE-UAS  N-Policy Comparison                      ║")
+    print("╠═══════════════════════════════════════════════════════╣")
+    print(f"║  Episodes:  {args.episodes:<44}║")
+    print("║  Policies:  Random / Greedy / DQN / h-DQN /           ║")
+    print("║             Game-EQ / Signaling-EQ / Hybrid           ║")
+    print("╚═══════════════════════════════════════════════════════╝")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n  Device: {device}")
@@ -473,6 +550,23 @@ def main():
     else:
         print(f"  Game-EQ model not found: {game_path}")
         print(f"    Run: python3 scripts/train_game.py --rounds 4")
+
+    # Signaling-EQ: zero-shot (no checkpoint required) — C3 contribution
+    policies.append(SignalingEQPolicy(
+        kappa=float(os.environ.get("SIGNALING_KAPPA", 0.5)),
+        temperature=float(os.environ.get("SIGNALING_TEMPERATURE", 0.8)),
+        epsilon=float(os.environ.get("SIGNALING_EPSILON", 0.10)),
+        learning_rate=float(os.environ.get("SIGNALING_LEARNING_RATE", 0.1)),
+    ))
+    print(f"  Signaling-EQ: κ={os.environ.get('SIGNALING_KAPPA', 0.5)}, "
+          f"τ={os.environ.get('SIGNALING_TEMPERATURE', 0.8)}")
+
+    # Hybrid: alternates Signaling-EQ and DQN
+    policies.append(HybridPolicy(
+        dqn_path=str(model_path) if model_path.exists() else None,
+        device=device,
+    ))
+    print(f"  Hybrid: Signaling-EQ + DQN alternation")
 
     # Evaluate each policy
     results = []
@@ -531,10 +625,28 @@ def main():
                         return self._net(s).argmax(dim=1).item()
             return _P(net, torch.device(device))
 
+        # Signaling-EQ wrapper for cross-play (MarkovGameEnv defender obs layout
+        # matches DeceptionEnv: state[0]=phase/3, state[2]=μ_A)
+        class _SignalingEQGamePolicy:
+            def __init__(self):
+                from honey_drone.signaling_game_solver import SignalingGameSolver
+                self._s = SignalingGameSolver(
+                    cost_sensitivity_kappa=float(os.environ.get("SIGNALING_KAPPA", 0.5)),
+                    temperature=float(os.environ.get("SIGNALING_TEMPERATURE", 0.8)),
+                    exploration_epsilon=float(os.environ.get("SIGNALING_EPSILON", 0.10)),
+                    learning_rate=float(os.environ.get("SIGNALING_LEARNING_RATE", 0.1)),
+                )
+            def select(self, obs):
+                phase = int(round(float(obs[0]) * 3))
+                mu = float(obs[2]) if len(obs) > 2 else 0.7
+                idx, _, _ = self._s.select_skill(mu_a=mu, phase=max(0, min(3, phase)))
+                return idx
+
         def_pols = {
             "Random": GameRandom(N_DEFENDER_ACTIONS),
             "Greedy": GreedyDefenderPolicy(),
             "Game-EQ": _load_game_policy(game_def_path, N_DEFENDER_ACTIONS, DEFENDER_OBS_DIM),
+            "Signaling-EQ": _SignalingEQGamePolicy(),
         }
         atk_pols = {
             "Random": GameRandom(N_ATTACKER_ACTIONS),

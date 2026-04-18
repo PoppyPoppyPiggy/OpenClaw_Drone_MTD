@@ -264,33 +264,176 @@ def generate_latex(log: dict, out_dir: Path) -> None:
     print(f"  LaTeX table: {path}")
 
 
+def compute_signaling_exploitability(
+    n_episodes: int = 300,
+    kappa: float = 0.5,
+    temperature: float = 0.8,
+    epsilon: float = 0.10,
+) -> dict:
+    """
+    [ROLE] Measure exploitability of the (frozen) Signaling Game equilibrium.
+           Exploitability = r_atk(best-response) - r_atk(random)
+           Lower values ⇒ solver is closer to a robust Nash-like fixed point.
+
+    [INPUTS]
+        results/models/game_attacker_vs_signaling.pt  (if present)
+        — produced by `train_game.py --defender-policy signaling_eq`.
+        If missing, only random- and greedy-attacker payoffs are reported.
+
+    [REF] Lanctot et al. (2017) — Unified game-theoretic approach to MARL
+          Fudenberg & Tirole (1991), Game Theory, §8.3 (PBE exploitability)
+    """
+    import torch
+
+    from honey_drone.markov_game_env import (
+        MarkovGameEnv, RandomPolicy, GreedyAttackerPolicy,
+        N_ATTACKER_ACTIONS, ATTACKER_OBS_DIM,
+    )
+    from honey_drone.signaling_game_solver import SignalingGameSolver
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def _eval(defender, attacker, n_eps):
+        env = MarkovGameEnv(max_steps=200)
+        r_def_sum, r_atk_sum = 0.0, 0.0
+        for _ in range(n_eps):
+            obs_d, obs_a = env.reset()
+            ep_d, ep_a = 0.0, 0.0
+            for _ in range(200):
+                phase = int(round(float(obs_d[0]) * 3))
+                mu = float(obs_d[2])
+                d_act, _, _ = defender.select_skill(
+                    mu_a=mu, phase=max(0, min(3, phase)),
+                )
+                a_act = attacker.select(obs_a)
+                obs_d, obs_a, r_d, r_a, done, _ = env.step(d_act, a_act)
+                ep_d += r_d
+                ep_a += r_a
+                if done:
+                    break
+            r_def_sum += ep_d
+            r_atk_sum += ep_a
+        return {
+            "avg_r_def": round(r_def_sum / n_eps, 4),
+            "avg_r_atk": round(r_atk_sum / n_eps, 4),
+        }
+
+    defender = SignalingGameSolver(
+        cost_sensitivity_kappa=kappa,
+        temperature=temperature,
+        exploration_epsilon=epsilon,
+        learning_rate=0.0,  # frozen equilibrium
+    )
+
+    out = {
+        "kappa": kappa,
+        "temperature": temperature,
+        "epsilon": epsilon,
+        "episodes": n_episodes,
+    }
+
+    out["random_attacker"] = _eval(defender, RandomPolicy(N_ATTACKER_ACTIONS), n_episodes)
+    out["greedy_attacker"] = _eval(defender, GreedyAttackerPolicy(), n_episodes)
+
+    # Best-response attacker (trained vs frozen solver)
+    br_path = Path("results/models/game_attacker_vs_signaling.pt")
+    if br_path.exists():
+        from train_dqn import DQN
+        ckpt = torch.load(br_path, map_location=device, weights_only=False)
+        hidden = ckpt["policy_state_dict"]["feature.0.weight"].shape[0]
+        net = DQN(ATTACKER_OBS_DIM, N_ATTACKER_ACTIONS, hidden=hidden).to(device)
+        net.load_state_dict(ckpt["policy_state_dict"])
+        net.eval()
+
+        class _BR:
+            def select(self, obs):
+                with torch.no_grad():
+                    s = torch.FloatTensor(obs).unsqueeze(0).to(device)
+                    return net(s).argmax(dim=1).item()
+
+        out["best_response_attacker"] = _eval(defender, _BR(), n_episodes)
+        out["exploitability_vs_random"] = round(
+            out["best_response_attacker"]["avg_r_atk"] - out["random_attacker"]["avg_r_atk"], 4,
+        )
+        out["exploitability_vs_greedy"] = round(
+            out["best_response_attacker"]["avg_r_atk"] - out["greedy_attacker"]["avg_r_atk"], 4,
+        )
+    else:
+        out["best_response_attacker"] = None
+        out["exploitability_vs_random"] = None
+        out["exploitability_vs_greedy"] = None
+        out["note"] = ("Best-response checkpoint not found. Run: "
+                       "python3 scripts/train_game.py --defender-policy signaling_eq")
+
+    return out
+
+
+def print_exploitability(expl: dict) -> None:
+    print("\n  ── Signaling-Eq Solver Exploitability ──")
+    print(f"  config: κ={expl['kappa']}  τ={expl['temperature']}  ε={expl['epsilon']}  "
+          f"({expl['episodes']} episodes each)\n")
+    rows = [
+        ("Random attacker",  expl["random_attacker"]),
+        ("Greedy attacker",  expl["greedy_attacker"]),
+        ("Best-response attacker", expl["best_response_attacker"]),
+    ]
+    for name, r in rows:
+        if r is None:
+            print(f"    {name:24s} — not run")
+            continue
+        print(f"    {name:24s}  r_def={r['avg_r_def']:+8.3f}   r_atk={r['avg_r_atk']:+8.3f}")
+    if expl["exploitability_vs_random"] is not None:
+        print(f"\n    Exploitability Δr_atk (BR − Random): {expl['exploitability_vs_random']:+.3f}")
+        print(f"    Exploitability Δr_atk (BR − Greedy): {expl['exploitability_vs_greedy']:+.3f}")
+        print(f"    (lower absolute Δ = solver closer to equilibrium)\n")
+    else:
+        print(f"\n    {expl.get('note', '')}\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Analyze game-theoretic training")
     parser.add_argument("--log", type=str, default="results/models/game_training_log.json")
+    parser.add_argument("--skip-exploitability", action="store_true",
+                        help="Skip signaling-eq exploitability computation")
+    parser.add_argument("--expl-episodes", type=int, default=300)
+    parser.add_argument("--sig-kappa", type=float, default=0.5)
+    parser.add_argument("--sig-temperature", type=float, default=0.8)
+    parser.add_argument("--sig-epsilon", type=float, default=0.10)
     args = parser.parse_args()
-
-    log_path = Path(args.log)
-    if not log_path.exists():
-        print(f"  Training log not found: {log_path}")
-        print(f"  Run: python3 scripts/train_game.py")
-        return
-
-    log = load_log(str(log_path))
 
     fig_dir = Path("results/figures")
     fig_dir.mkdir(parents=True, exist_ok=True)
     latex_dir = Path("results/latex")
     latex_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n  MIRAGE-UAS Game-Theoretic Analysis")
-    print(f"  Log: {log_path}")
-    print(f"  Rounds: {len(log['rounds'])}")
-    print(f"  Elapsed: {log.get('elapsed_sec', 0):.1f}s\n")
+    log_path = Path(args.log)
+    if log_path.exists():
+        log = load_log(str(log_path))
+        print(f"\n  MIRAGE-UAS Game-Theoretic Analysis")
+        print(f"  Log: {log_path}")
+        print(f"  Rounds: {len(log['rounds'])}")
+        print(f"  Elapsed: {log.get('elapsed_sec', 0):.1f}s\n")
 
-    plot_convergence(log, fig_dir)
-    plot_cross_play(log, fig_dir)
-    plot_strategy_profile(fig_dir)
-    generate_latex(log, latex_dir)
+        plot_convergence(log, fig_dir)
+        plot_cross_play(log, fig_dir)
+        plot_strategy_profile(fig_dir)
+        generate_latex(log, latex_dir)
+    else:
+        print(f"\n  Training log not found: {log_path} — skipping DQN-game plots")
+        print(f"  (will still compute signaling-eq exploitability if requested)\n")
+
+    # ── Signaling-Eq Exploitability (NEW) ──
+    if not args.skip_exploitability:
+        expl = compute_signaling_exploitability(
+            n_episodes=args.expl_episodes,
+            kappa=args.sig_kappa,
+            temperature=args.sig_temperature,
+            epsilon=args.sig_epsilon,
+        )
+        print_exploitability(expl)
+        expl_path = Path("results/signaling_exploitability.json")
+        expl_path.write_text(json.dumps(expl, indent=2))
+        print(f"  Saved: {expl_path}")
 
     print(f"\n  Done.\n")
 
