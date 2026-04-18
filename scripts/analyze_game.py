@@ -63,7 +63,7 @@ def plot_convergence(log: dict, out_dir: Path) -> None:
     ax1.grid(True, alpha=0.3)
 
     # P(real) convergence
-    ax2.plot(x, p_reals, "g-^", linewidth=2, markersize=8, color="#2ca02c")
+    ax2.plot(x, p_reals, "-^", linewidth=2, markersize=8, color="#2ca02c")
     ax2.set_xlabel("Training Round", fontsize=12)
     ax2.set_ylabel("Avg P(real)", fontsize=12)
     ax2.set_title("Belief Convergence", fontsize=13, fontweight="bold")
@@ -143,11 +143,12 @@ def plot_strategy_profile(out_dir: Path, n_episodes: int = 500) -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load policies
-    from scripts.train_dqn import DQN
+    # Load policies — auto-detect hidden size from checkpoint
+    from train_dqn import DQN
     def _load(path, n_act, s_dim):
         ckpt = torch.load(path, map_location=device, weights_only=False)
-        net = DQN(s_dim, n_act).to(device)
+        hidden = ckpt["policy_state_dict"]["feature.0.weight"].shape[0]
+        net = DQN(s_dim, n_act, hidden=hidden).to(device)
         net.load_state_dict(ckpt["policy_state_dict"])
         net.eval()
         return net

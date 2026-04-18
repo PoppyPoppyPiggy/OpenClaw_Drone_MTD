@@ -98,7 +98,8 @@ class GameEQPolicy:
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
         state_dim = ckpt.get("state_dim", 10)
         n_actions = ckpt.get("n_actions", 5)
-        self.net = DQN(state_dim, n_actions).to(self.device)
+        hidden = ckpt["policy_state_dict"]["feature.0.weight"].shape[0]
+        self.net = DQN(state_dim, n_actions, hidden=hidden).to(self.device)
         self.net.load_state_dict(ckpt["policy_state_dict"])
         self.net.eval()
         self._skills = ckpt.get("skills", [])
