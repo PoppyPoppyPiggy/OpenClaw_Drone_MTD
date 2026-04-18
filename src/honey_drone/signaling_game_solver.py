@@ -1,32 +1,58 @@
 #!/usr/bin/env python3
 """
-signaling_game_solver.py — Perfect Bayesian Equilibrium for Defender Skill Selection
+signaling_game_solver.py — Logit-Response Behavioural Model for Defender Skill Selection
 
 Project  : MIRAGE-UAS
-Module   : Honey Drone / Signaling Game Solver
+Module   : Honey Drone / Signaling Game Behavioural Solver
 Author   : DS Lab / 민성
 Created  : 2026-04-18
 
 [ROLE]
-    OpenClawAgent의 proactive-loop skill selection을 Signaling Game의
-    Perfect Bayesian Equilibrium (PBE)로 계산한다. BehaviorLearner (DQN)
-    는 long-horizon 학습을 담당하고, 본 솔버는 mu_A (공격자 사후 믿음)
-    를 즉시 업데이트하는 one-shot mixed strategy를 반환한다.
+    OpenClawAgent 의 proactive-loop skill selection 을 Signaling Game
+    공식에 기초한 *behavioural approximation* 으로 계산한다.
+    BehaviorLearner (DQN) 는 long-horizon 학습을 맡고, 본 솔버는
+    공격자 사후 mu_A 와 defender cost 를 반영한 one-shot mixed
+    strategy 를 반환한다.
+
+    [IMPORTANT] 본 솔버는 **엄밀한 Perfect Bayesian Equilibrium solver
+    가 아니다**. Crawford–Sobel (1982) 의 PBE 는 type-conditional
+    strategies 에 대한 fixed-point 방정식을 풀어야 구한다.
+    여기서는 다음의 **Quantal Response Equilibrium** 계열 근사(McKelvey
+    & Palfrey, 1995)를 사용한다:
+
+        σ(m) ∝ exp( EU(m) / τ )
+        EU(m) = belief_shift(phase, m; μ_A) − κ · cost(m)
+
+    즉 expected-utility 에 대한 **logit choice (softmax)** 이며,
+    온도 τ → 0 일 때 best-response 에 수렴한다. ε-greedy 로
+    exploration 을 보강해 online EMA 가 per-skill Δμ 를 추정하도록
+    한다.
+
+[WHY NOT FULL PBE]
+    - 본 시스템은 attacker type 추정을 DeceptionStateManager 로
+      분리했으므로 solver 에서는 μ_A 를 '외부 입력'으로 다룬다.
+    - 한 ep 내 fixed-point 수렴은 온라인 RL 루프 지연 요건과 충돌
+      (< 100ms 결정 시간 예산).
+    - 대신 markov_game_env 의 belief-shift prior 를 고정값으로 쓰고
+      empirical EMA 로 자체 보정 → 연구자-해석가능한 mixed strategy.
 
 [GAME FORMULATION]
     - 유형 집합 Θ = {honeypot, real}  — Nature가 선택
     - 메시지(=defender skill) M = {statustext, flight_sim, ghost_port,
                                     reboot_sim, credential_leak}
-    - 공격자 사후 mu_A(θ=real | m) — Bayes rule
-    - Defender payoff U_D = Σ_m σ(m|θ) * [mu_A(real|m) - κ·cost(m)]
-    - Attacker payoff는 markov_game_env의 belief-update matrix로 근사
+    - 공격자 사후 mu_A(θ=real | m) — Bayes rule (DeceptionStateManager 담당)
+    - Defender payoff U_D ≈ Σ_m σ(m) · [Δμ_A(m|phase) − κ·cost(m)]
+    - Mixed strategy σ = softmax(U_D / τ)  — logit-response approximation
 
 [REF]
-    Crawford & Sobel (1982), "Strategic Information Transmission",
-        Econometrica 50(6), pp. 1431-1451   — Eq.SG-cheaptalk
-    Pawlick & Zhu (2021), "Game Theory for Cyber Deception",
-        Springer, Eq.10                        — μ_A update
-    Fudenberg & Tirole (1991), Game Theory, §8.3 (PBE)
+    McKelvey & Palfrey (1995), "Quantal Response Equilibria for Normal
+        Form Games", Games and Economic Behavior, 10(1):6-38.
+        — 본 솔버가 구현하는 behavioural equilibrium 의 모집단
+    Crawford & Sobel (1982), "Strategic Information Transmission"
+        — PBE 정의 (본 솔버는 이를 *완전 구현하지 않음*)
+    Pawlick & Zhu (2021), "Game Theory for Cyber Deception", Eq.10
+        — μ_A Bayesian update (솔버의 외부 입력)
+    Fudenberg & Tirole (1991), Game Theory, §8.3 (PBE background)
 
 [DATA FLOW]
     OpenClawAgent._proactive_loop
@@ -101,12 +127,17 @@ class SignalingGameSolver:
       1. Phase-conditional belief-shift priors from markov_game_env
          (_def_belief_effect matrix — calibrated from simulation sweeps)
       2. Online empirical Δμ_A stats (EMA, per-skill)
-      3. Cost-aware softmax over expected utility
+      3. Cost-aware logit-response softmax over expected utility  (QRE)
       4. ε-exploration to avoid lock-in
 
-    Equilibrium mixing keeps the attacker's best-response uncertain (no
-    pooling on a single signal — Crawford-Sobel style information transfer
-    without deterministic separation).
+    Mixed-strategy σ = softmax(EU / τ) is a **behavioural Quantal Response
+    Equilibrium (QRE) approximation** of mixed-strategy play, NOT a
+    complete Perfect Bayesian Equilibrium solver. As τ → 0 the policy
+    approaches pure best-response; large τ approaches uniform. τ is a
+    researcher-set behavioural parameter — see
+    `scripts/tune_signaling.py` for the grid search that anchors our
+    default value, and `sensitivity_sweep()` in this module for a
+    standalone τ×κ sweep used in the paper appendix.
     """
 
     def __init__(
@@ -275,3 +306,74 @@ def build_from_env() -> SignalingGameSolver:
         exploration_epsilon=_f("SIGNALING_EPSILON", 0.10),
         temperature=_f("SIGNALING_TEMPERATURE", 0.8),
     )
+
+
+def sensitivity_sweep(
+    *,
+    kappas: list[float] | None = None,
+    temperatures: list[float] | None = None,
+    phases: tuple[int, ...] = (0, 1, 2, 3),
+    mu_a_grid: tuple[float, ...] = (0.3, 0.5, 0.7, 0.9),
+    seed: int = 42,
+) -> dict:
+    """
+    Compute the mixed-strategy distribution induced by this logit-response
+    model across a τ×κ grid, as a function of phase × μ_A. Output is used
+    for the paper-appendix sensitivity table that shows how the behavioural
+    equilibrium shifts with the two hyperparameters. This is a *closed-form*
+    sweep — no env rollouts — so it is fast and deterministic.
+
+    Returns
+    -------
+    dict with keys:
+        "grid": { (κ, τ): np.ndarray of shape (phases, mu_grid, n_skills) }
+        "argmax_skill_shift": count of argmax skill changes vs baseline
+        "mean_entropy": average shannon entropy of the mixing distribution
+                         (higher = more stochastic, lower = near-pure)
+    """
+    import random as _pyrnd
+    _pyrnd.seed(seed)
+    np.random.seed(seed)
+
+    kappas = list(kappas or [0.1, 0.3, 0.5, 0.7, 1.0])
+    temperatures = list(temperatures or [0.3, 0.5, 0.8, 1.2, 2.0])
+
+    out: dict = {"grid": {}}
+    baseline_argmax: dict | None = None
+
+    for k in kappas:
+        for t in temperatures:
+            s = SignalingGameSolver(
+                cost_sensitivity_kappa=k,
+                temperature=t,
+                exploration_epsilon=0.0,   # deterministic for the sweep
+                learning_rate=0.0,
+            )
+            cell = np.zeros((len(phases), len(mu_a_grid), len(DEFENDER_SKILLS)))
+            for pi, phase in enumerate(phases):
+                for mi, mu in enumerate(mu_a_grid):
+                    _idx, _name, dbg = s.select_skill(mu_a=mu, phase=phase)
+                    cell[pi, mi, :] = np.array(dbg["mixing"])
+            out["grid"][(k, t)] = cell
+
+    # Baseline: the (κ=0.5, τ=0.8) cell argmax per (phase, μ)
+    if (0.5, 0.8) in out["grid"]:
+        base = out["grid"][(0.5, 0.8)].argmax(axis=-1)
+    else:
+        base = out["grid"][(kappas[0], temperatures[0])].argmax(axis=-1)
+
+    shifts = {}
+    entropies = []
+    for (k, t), cell in out["grid"].items():
+        argmx = cell.argmax(axis=-1)
+        shifts[(k, t)] = int(np.sum(argmx != base))
+        # Shannon entropy of every (phase, μ) distribution, averaged
+        p = np.clip(cell, 1e-12, 1.0)
+        entropies.append(float((-p * np.log(p)).sum(axis=-1).mean()))
+    out["argmax_skill_shift_vs_baseline"] = shifts
+    out["mean_entropy_per_cell"] = entropies
+    out["kappas"] = kappas
+    out["temperatures"] = temperatures
+    out["phases"] = list(phases)
+    out["mu_a_grid"] = list(mu_a_grid)
+    return out

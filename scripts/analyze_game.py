@@ -269,6 +269,7 @@ def compute_signaling_exploitability(
     kappa: float = 0.5,
     temperature: float = 0.8,
     epsilon: float = 0.10,
+    seed: int = 2024,
 ) -> dict:
     """
     [ROLE] Measure exploitability of the (frozen) Signaling Game equilibrium.
@@ -293,7 +294,18 @@ def compute_signaling_exploitability(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def _eval(defender, attacker, n_eps):
+    # Seed the Python + numpy global RNGs so MarkovGameEnv (which uses them
+    # throughout its step() logic) is deterministic across evaluations.
+    import random as _pyrnd
+    _pyrnd.seed(seed)
+    np.random.seed(seed)
+
+    def _eval(defender, attacker, n_eps, eval_seed_offset: int = 0):
+        # Reseed so every _eval call starts from the same RNG anchor,
+        # but different (defender, attacker) matchups use distinct offsets
+        # so their trajectories are independent.
+        _pyrnd.seed(seed + eval_seed_offset)
+        np.random.seed(seed + eval_seed_offset)
         env = MarkovGameEnv(max_steps=200)
         r_def_sum, r_atk_sum = 0.0, 0.0
         for _ in range(n_eps):
@@ -332,8 +344,8 @@ def compute_signaling_exploitability(
         "episodes": n_episodes,
     }
 
-    out["random_attacker"] = _eval(defender, RandomPolicy(N_ATTACKER_ACTIONS), n_episodes)
-    out["greedy_attacker"] = _eval(defender, GreedyAttackerPolicy(), n_episodes)
+    out["random_attacker"] = _eval(defender, RandomPolicy(N_ATTACKER_ACTIONS), n_episodes, eval_seed_offset=0)
+    out["greedy_attacker"] = _eval(defender, GreedyAttackerPolicy(), n_episodes, eval_seed_offset=1)
 
     # Best-response attacker (trained vs frozen solver)
     br_path = Path("results/models/game_attacker_vs_signaling.pt")
@@ -351,13 +363,21 @@ def compute_signaling_exploitability(
                     s = torch.FloatTensor(obs).unsqueeze(0).to(device)
                     return net(s).argmax(dim=1).item()
 
-        out["best_response_attacker"] = _eval(defender, _BR(), n_episodes)
-        out["exploitability_vs_random"] = round(
-            out["best_response_attacker"]["avg_r_atk"] - out["random_attacker"]["avg_r_atk"], 4,
-        )
-        out["exploitability_vs_greedy"] = round(
+        out["best_response_attacker"] = _eval(defender, _BR(), n_episodes, eval_seed_offset=2)
+        # Proper exploitability (Lanctot 2017): gain of BR over the
+        # current strategy σ_A that the solver expected. We use the
+        # greedy attacker as σ_A because it's the phase-optimal
+        # deterministic baseline; "Δ vs random" is reported separately
+        # as a sanity check on BR training effectiveness.
+        out["exploitability_br_vs_greedy"] = round(
             out["best_response_attacker"]["avg_r_atk"] - out["greedy_attacker"]["avg_r_atk"], 4,
         )
+        out["br_gain_vs_random"] = round(
+            out["best_response_attacker"]["avg_r_atk"] - out["random_attacker"]["avg_r_atk"], 4,
+        )
+        # Back-compat alias — older code paths read `exploitability_vs_random`.
+        out["exploitability_vs_random"] = out["br_gain_vs_random"]
+        out["exploitability_vs_greedy"] = out["exploitability_br_vs_greedy"]
     else:
         out["best_response_attacker"] = None
         out["exploitability_vs_random"] = None
@@ -399,6 +419,8 @@ def main():
     parser.add_argument("--sig-kappa", type=float, default=0.5)
     parser.add_argument("--sig-temperature", type=float, default=0.8)
     parser.add_argument("--sig-epsilon", type=float, default=0.10)
+    parser.add_argument("--seed", type=int, default=2024,
+                        help="Seed for exploitability evaluation RNGs (stdlib + numpy)")
     args = parser.parse_args()
 
     fig_dir = Path("results/figures")
@@ -429,6 +451,7 @@ def main():
             kappa=args.sig_kappa,
             temperature=args.sig_temperature,
             epsilon=args.sig_epsilon,
+            seed=args.seed,
         )
         print_exploitability(expl)
         expl_path = Path("results/signaling_exploitability.json")

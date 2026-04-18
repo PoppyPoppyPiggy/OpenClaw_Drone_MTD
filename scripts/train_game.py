@@ -260,22 +260,59 @@ def evaluate_matchup(
 
 def compute_exploitability(
     def_policy, atk_policy,
-    def_net: DQN, atk_net: DQN,
-    device: torch.device,
+    *,
+    br_def_policy=None,
+    br_atk_policy=None,
     n_episodes: int = 200,
-) -> float:
+) -> dict:
     """
-    Exploitability = how much each side can gain by deviating from current strategy.
-    Lower = closer to Nash equilibrium.
+    Exploitability (Lanctot et al. 2017, NeurIPS) measures how much each
+    side can GAIN by DEVIATING from the current joint policy σ = (σ_D, σ_A),
+    while the opponent stays fixed:
+
+        Exploit_D(σ) = max_{σ'_D} U_D(σ'_D, σ_A) − U_D(σ_D, σ_A)
+        Exploit_A(σ) = max_{σ'_A} U_A(σ_D, σ'_A) − U_A(σ_D, σ_A)
+        TotalExploit = Exploit_D + Exploit_A
+
+    A joint policy with total exploitability = 0 is a Nash equilibrium.
+    Lower values ⇒ closer to Nash.
+
+    In practice we approximate max_{σ'_i} with a **best-response policy**
+    trained (or constructed) to answer the fixed opponent. Callers pass:
+
+      br_def_policy: a best-response-to-atk_policy defender (OPTIONAL).
+                     If omitted, defender-side exploitability is `None`.
+      br_atk_policy: a best-response-to-def_policy attacker   (OPTIONAL).
+                     Same convention.
+
+    The previous implementation returned `r_def + r_atk` (total welfare),
+    which is NOT exploitability — a zero-sum game with welfare 0 may still
+    be arbitrarily far from Nash. Fixed here.
+
+    [REF] Lanctot et al. 2017, "A Unified Game-Theoretic Approach to
+          Multiagent Reinforcement Learning", NeurIPS.
     """
-    # Current matchup
     base = evaluate_matchup(def_policy, atk_policy, n_episodes)
 
-    # Best-response defender vs current attacker
-    # (already trained — that's what we just did)
-    # So exploitability is approximated by the improvement from last round
-
-    return base["avg_r_def"] + base["avg_r_atk"]  # proxy: total game value
+    out = {
+        "baseline": base,
+        "br_def_gain": None,
+        "br_atk_gain": None,
+        "total_exploitability": None,
+    }
+    if br_def_policy is not None:
+        br_def = evaluate_matchup(br_def_policy, atk_policy, n_episodes)
+        out["br_def"] = br_def
+        out["br_def_gain"] = round(br_def["avg_r_def"] - base["avg_r_def"], 4)
+    if br_atk_policy is not None:
+        br_atk = evaluate_matchup(def_policy, br_atk_policy, n_episodes)
+        out["br_atk"] = br_atk
+        out["br_atk_gain"] = round(br_atk["avg_r_atk"] - base["avg_r_atk"], 4)
+    if out["br_def_gain"] is not None and out["br_atk_gain"] is not None:
+        out["total_exploitability"] = round(
+            out["br_def_gain"] + out["br_atk_gain"], 4,
+        )
+    return out
 
 
 # ═══════════════════════════════════════════════════════════════
