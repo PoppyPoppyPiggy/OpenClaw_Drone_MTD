@@ -410,7 +410,13 @@ def train(
         strategy_cum_rewards += extrinsic_rewards
         strategy_steps += 1
         strat_engaged_count += info["engaged"].astype(np.float32)
-        strat_evasion_count += (info["evasion"] > prev_evasion).astype(np.float32) if 'prev_evasion' in dir() else 0
+        # info["evasion"] is a monotonic per-env evasion COUNTER from the env.
+        # We detect a NEW evasion event this step by comparing to the previous
+        # step's counter (initialised to zeros at line 299 and updated at line
+        # 418 after this tally). The earlier `if 'prev_evasion' in dir() else 0`
+        # guard was redundant (local name is always present after line 299),
+        # hence removed for clarity.
+        strat_evasion_count += (info["evasion"] > prev_evasion).astype(np.float32)
         strat_cum_intrinsic += intr
         env_rewards += extrinsic_rewards
         env_lengths += 1

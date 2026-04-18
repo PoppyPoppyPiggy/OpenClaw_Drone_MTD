@@ -135,7 +135,8 @@ def train(
             pass
     print()
 
-    env = DeceptionEnv(max_steps=200)
+    # Training env — seeded from train seed so training is deterministic.
+    env = DeceptionEnv(max_steps=200, seed=seed)
     # Use ENV's actual obs size — module-level STATE_DIM=64 is for VecDeceptionEnv;
     # single-agent DeceptionEnv._observe() returns a 10-dim vector.
     actual_state_dim = int(env.reset().shape[0])
@@ -246,11 +247,13 @@ def train(
             eps_per_sec = ep / elapsed
             eta = (episodes - ep) / max(eps_per_sec, 0.1)
 
-            # Action distribution in last 100 episodes
+            # Action distribution in last 100 episodes.
+            # NOTE: use a DISPOSABLE env (fixed probe-seed) so this progress
+            # print doesn't reset the training env or consume its RNG stream.
             bar = ""
             if ep >= 10:
-                # Count which actions the greedy policy would pick
-                test_states = [env.reset() for _ in range(50)]
+                probe_env = DeceptionEnv(max_steps=200, seed=99991 + ep)
+                test_states = [probe_env.reset() for _ in range(50)]
                 with torch.no_grad():
                     ts = torch.FloatTensor(np.array(test_states)).to(device)
                     acts = policy_net(ts).argmax(dim=1).cpu().numpy()
@@ -300,23 +303,32 @@ def train(
     (model_dir / "dqn_training_log.json").write_text(json.dumps(log, indent=2))
 
     # ═══════════════════════════════════════════════════════════════
-    # Final evaluation
+    # Final evaluation — HELD-OUT env, HELD-OUT seed
+    # The training env's RNG has been consumed across thousands of episodes;
+    # reusing it for final eval would leak training stochasticity into the
+    # reported metric. We spawn a fresh env seeded from `eval_seed` (not
+    # `seed`) so evaluation trajectories are reproducible AND independent
+    # of the exact number of training episodes.
     # ═══════════════════════════════════════════════════════════════
-    print(f"\n  ── Final Evaluation (100 episodes, greedy) ──")
+    print(f"\n  ── Final Evaluation ({eval_episodes} episodes, greedy, seed={eval_seed}) ──")
     policy_net.eval()
+    eval_env = DeceptionEnv(max_steps=200, seed=eval_seed)
     eval_rewards = []
     eval_p_reals = []
     action_counts = np.zeros(N_ACTIONS)
 
-    for _ in range(100):
-        state = env.reset()
+    for ep_idx in range(eval_episodes):
+        # Per-episode sub-seed for reproducible trajectory per index, even
+        # if eval_episodes is reduced later (run 0..N-1 overlaps with run
+        # 0..M-1 for M<N).
+        state = eval_env.reset(seed=eval_seed + ep_idx)
         total_r = 0.0
         while True:
             with torch.no_grad():
                 s_t = torch.FloatTensor(state).unsqueeze(0).to(device)
                 action = policy_net(s_t).argmax(dim=1).item()
             action_counts[action] += 1
-            state, reward, done, info = env.step(action)
+            state, reward, done, info = eval_env.step(action)
             total_r += reward
             if done:
                 break

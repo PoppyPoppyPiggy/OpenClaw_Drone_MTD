@@ -498,8 +498,20 @@ def _evaluate_dqn_vec(policy, n_episodes: int, seed: int = 42):
 
 
 def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
+    """Evaluate `policy` for `n_episodes`.
+
+    IMPORTANT (reproducibility): we IGNORE the passed-in `env` and build a
+    fresh seeded DeceptionEnv inside. The caller-supplied env was a
+    placeholder — its RNG state is not controlled. Building per-episode
+    seeded envs guarantees that every policy in a comparison sees the
+    IDENTICAL attacker stream, so differences are attributable to the
+    policy and not to RNG variation.
+    """
+    del env  # unused — kept in signature for backwards-compat callers
     """Run n_episodes and collect metrics."""
+    import random as _pyrnd
     np.random.seed(seed)
+    _pyrnd.seed(seed)
 
     use_param = getattr(policy, "uses_param_env", False)
     use_legacy = getattr(policy, "uses_legacy_env", False)
@@ -513,10 +525,11 @@ def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
     if use_vec:
         return _evaluate_dqn_vec(policy, n_episodes, seed)
 
-    if use_param:
-        eval_env = DeceptionEnv(max_steps=env.max_steps, action_mode="param")
-    else:
-        eval_env = env
+    # Isolated seeded env so RNG stream is identical across policies being
+    # compared. DeceptionEnv.__init__ accepts `seed` to anchor BOTH the
+    # python stdlib RNG AND numpy RNG it consumes internally.
+    mode = "param" if use_param else "base"
+    eval_env = DeceptionEnv(max_steps=200, action_mode=mode, seed=seed)
 
     rewards = []
     lengths = []
@@ -526,7 +539,9 @@ def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
     phase_actions = {p: np.zeros(N_ACTIONS) for p in range(4)}
 
     for ep in range(n_episodes):
-        state = eval_env.reset()
+        # Per-episode sub-seed: identical for the same `ep` across ALL
+        # policies being compared → same attacker campaign, fair diff.
+        state = eval_env.reset(seed=seed + ep)
         total_r = 0.0
         steps = 0
         while True:

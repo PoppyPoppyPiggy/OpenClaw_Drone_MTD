@@ -47,8 +47,9 @@ deception_env.py — Gym-style Environment for Deception Agent Training
 from __future__ import annotations
 
 import math
-import random
+import random as _stdrandom
 from dataclasses import dataclass, field
+from typing import Optional
 
 import numpy as np
 
@@ -135,12 +136,24 @@ class DeceptionEnv:
         action_mode="param" → 45 parameterized actions (h-DQN)
     """
 
-    def __init__(self, max_steps: int = 100, action_mode: str = "base") -> None:
+    def __init__(
+        self,
+        max_steps: int = 100,
+        action_mode: str = "base",
+        seed: Optional[int] = None,
+    ) -> None:
         self.max_steps = max_steps
         self.action_mode = action_mode  # "base" or "param"
         self.n_actions = N_ACTIONS_FLAT if action_mode == "param" else N_BASE_ACTIONS
         self.state = AttackerState()
         self._step_duration = 3.0  # seconds per step
+        # Per-instance RNGs for reproducibility. The env touches BOTH Python
+        # stdlib `random` (via random.randint/random.gauss) AND numpy random
+        # in various places, so we route every stochastic call through these
+        # two instance-local RNGs. Callers pass `seed` to the constructor OR
+        # to reset(seed=...) — NEVER rely on global np.random.seed.
+        self._py_rng = _stdrandom.Random(seed)
+        self._np_rng = np.random.default_rng(seed)
 
         # ══════════════════════════════════════════════════════
         # Base action effectiveness matrices (5 actions × 4 phases)
@@ -198,12 +211,20 @@ class DeceptionEnv:
             [0.85, 1.15, 1.1], # C: less effective, more engaging, riskier
         ])
 
-    def reset(self) -> np.ndarray:
-        """Reset to new episode (new attacker campaign)."""
+    def reset(self, seed: Optional[int] = None) -> np.ndarray:
+        """Reset to new episode (new attacker campaign).
+
+        Pass `seed` to re-anchor the instance RNGs — useful for creating a
+        hold-out evaluation trajectory that is independent of the training
+        RNG stream. Without `seed`, the RNG continues its previous state.
+        """
+        if seed is not None:
+            self._py_rng = _stdrandom.Random(seed)
+            self._np_rng = np.random.default_rng(seed)
         self.state = AttackerState()
         # Randomize starting conditions
-        self.state.level = random.randint(0, 2)
-        self.state.p_real = 0.7 + random.gauss(0, 0.05)
+        self.state.level = self._py_rng.randint(0, 2)
+        self.state.p_real = 0.7 + self._py_rng.gauss(0, 0.05)
         return self._observe()
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, dict]:
@@ -234,7 +255,7 @@ class DeceptionEnv:
             base_effect = self._action_effect[phase, action]
             intensity, variant = 1, 0
             engage_mult, evasion_mult = 1.0, 1.0
-        noise = random.gauss(0, 0.01)
+        noise = self._py_rng.gauss(0, 0.01)
         delta_p = base_effect + noise
 
         # Bayesian update simulation
@@ -249,11 +270,11 @@ class DeceptionEnv:
         # ── 2. Engagement: does attacker respond? ──
         engage_prob = self._action_engage[phase, base] * engage_mult
         engage_prob = min(engage_prob, 0.98)
-        engaged = random.random() < engage_prob
+        engaged = self._py_rng.random() < engage_prob
         if engaged:
-            new_pkts = random.randint(1, 5)
+            new_pkts = self._py_rng.randint(1, 5)
             s.packets += new_pkts
-            s.services_touched += 1 if random.random() < 0.3 else 0
+            s.services_touched += 1 if self._py_rng.random() < 0.3 else 0
 
         # ── 3. Evasion: does attacker become suspicious? ──
         evasion_prob = self._action_evasion[phase, base] * evasion_mult
@@ -261,7 +282,7 @@ class DeceptionEnv:
         # Evasion increases as p_real drops
         if s.p_real < 0.5:
             evasion_prob *= 2.0
-        if random.random() < evasion_prob:
+        if self._py_rng.random() < evasion_prob:
             s.evasion_signals += 1
             # Bayesian update with evasion LR=0.3
             s.p_real = (0.3 * s.p_real) / (0.3 * s.p_real + 1.0 * (1 - s.p_real))
@@ -269,15 +290,15 @@ class DeceptionEnv:
         # ── 4. Phase progression (stochastic) ──
         s.time_in_phase += self._step_duration
         phase_advance_prob = 0.02 * (1 + s.time_in_phase / 30.0)
-        if random.random() < phase_advance_prob and s.phase < 3:
+        if self._py_rng.random() < phase_advance_prob and s.phase < 3:
             s.phase += 1
             s.time_in_phase = 0.0
             # Level may increase with phase
-            if s.level < 4 and random.random() < 0.3:
+            if s.level < 4 and self._py_rng.random() < 0.3:
                 s.level += 1
 
         # Exploit attempts increase in EXPLOIT/PERSIST phases
-        if s.phase >= 1 and random.random() < 0.1:
+        if s.phase >= 1 and self._py_rng.random() < 0.1:
             s.exploit_attempts += 1
 
         # Ghost port tracking
