@@ -60,7 +60,13 @@ class GreedyPolicy:
 
 
 class DQNPolicy:
-    """DQN-trained policy — loaded from checkpoint."""
+    """DQN-trained policy — loaded from checkpoint.
+
+    Checkpoints vary:
+      - state_dim=10 → trained on single-agent DeceptionEnv (legacy)
+      - state_dim=64 → trained on VecDeceptionEnv (history-augmented obs)
+    Output layer may be N_ACTIONS (5 base) or 45 (param mode).
+    """
     name = "DQN"
     def __init__(self, model_path: str, device: str = "cuda"):
         import importlib.util
@@ -70,19 +76,39 @@ class DQNPolicy:
         DQN = mod.DQN
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
-        # Auto-detect state_dim from checkpoint
-        ckpt_state_dim = ckpt["policy_state_dict"]["feature.0.weight"].shape[1]
+        # Auto-detect state_dim and n_actions from checkpoint
+        sd = ckpt["policy_state_dict"]
+        ckpt_state_dim = sd["feature.0.weight"].shape[1]
+        # Output layer is last Linear — find by searching keys for value/advantage heads
+        ckpt_n_actions = None
+        for k, v in sd.items():
+            if k.endswith("weight") and v.dim() == 2 and v.shape[1] != ckpt_state_dim:
+                # heuristic: last linear with small output is the action head
+                ckpt_n_actions = v.shape[0]
+        if ckpt_n_actions is None:
+            ckpt_n_actions = N_ACTIONS
         self._state_dim = ckpt_state_dim
-        self.net = DQN(ckpt_state_dim, N_ACTIONS).to(self.device)
-        self.net.load_state_dict(ckpt["policy_state_dict"])
+        self._n_actions = ckpt_n_actions
+        self.net = DQN(ckpt_state_dim, ckpt_n_actions).to(self.device)
+        self.net.load_state_dict(sd)
         self.net.eval()
         self._train_ep = ckpt.get("episode", "?")
         self._train_reward = ckpt.get("avg_reward", "?")
 
     @property
     def uses_legacy_env(self):
-        """DQN was trained on 10-dim state, needs legacy env."""
+        """10-dim checkpoint works with single-agent DeceptionEnv."""
         return self._state_dim == 10
+
+    @property
+    def uses_vec_env(self):
+        """64-dim checkpoint requires VecDeceptionEnv observations."""
+        return self._state_dim != 10
+
+    @property
+    def uses_param_env(self):
+        """45-action checkpoint requires param-mode env."""
+        return self._n_actions == 45
 
     def select(self, state: np.ndarray) -> int:
         with torch.no_grad():
@@ -363,18 +389,124 @@ def _evaluate_hdqn_vec(policy, n_episodes: int, seed: int = 42):
         "rewards_raw": [round(r, 2) for r in rewards_all],
     }
 
+def _evaluate_dqn_vec(policy, n_episodes: int, seed: int = 42):
+    """Evaluate a 64-dim DQN policy via VecDeceptionEnv (batch eval)."""
+    from honey_drone.deception_env import VecDeceptionEnv, N_BASE_ACTIONS
+    np.random.seed(seed)
+
+    n_envs = min(n_episodes, 256)
+    env = VecDeceptionEnv(n_envs=n_envs, max_steps=200)
+    states = env.reset_all()
+    env_rewards = np.zeros(n_envs, dtype=np.float32)
+    env_lengths = np.zeros(n_envs, dtype=np.int32)
+    done_mask = np.zeros(n_envs, dtype=bool)
+    rewards_all, lengths_all, p_reals_all, survivals_all = [], [], [], []
+    action_counts = np.zeros(N_ACTIONS)
+    phase_actions = {p: np.zeros(N_ACTIONS) for p in range(4)}
+    device = policy.device
+
+    use_param = policy.uses_param_env
+
+    while len(rewards_all) < n_episodes:
+        active = np.where(~done_mask)[0]
+        if len(active) == 0:
+            states = env.reset_all()
+            env_rewards[:] = 0
+            env_lengths[:] = 0
+            done_mask[:] = False
+            continue
+
+        with torch.no_grad():
+            s_t = torch.from_numpy(states[active]).to(device)
+            q = policy.net(s_t)
+            actions_active = q.argmax(dim=1).cpu().numpy()
+
+        # Build full-width actions array (inactive envs get dummy 0)
+        actions = np.zeros(n_envs, dtype=np.int32)
+        actions[active] = actions_active
+
+        # For stats only — decode base action
+        for i_local, env_idx in enumerate(active):
+            a = int(actions_active[i_local])
+            base = a // 9 if use_param else min(a, N_BASE_ACTIONS - 1)
+            action_counts[base] += 1
+            # 64-dim state: phase is one-hot in dims 0-3
+            phase = int(np.argmax(states[env_idx][:4]))
+            phase_actions[phase][base] += 1
+
+        next_states, r, dones, info = env.step(actions)
+        env_rewards += r * (~done_mask)
+        env_lengths += (~done_mask).astype(np.int32)
+        states = next_states
+
+        newly_done = dones & ~done_mask
+        if newly_done.any():
+            for i in np.where(newly_done)[0]:
+                rewards_all.append(float(env_rewards[i]))
+                lengths_all.append(int(env_lengths[i]))
+                p_reals_all.append(float(info["p_real"][i]))
+                survivals_all.append(bool(env_lengths[i] >= 200))
+            done_mask |= dones
+
+        if done_mask.all():
+            states = env.reset_all()
+            env_rewards[:] = 0
+            env_lengths[:] = 0
+            done_mask[:] = False
+
+    rewards_all = rewards_all[:n_episodes]
+    lengths_all = lengths_all[:n_episodes]
+    p_reals_all = p_reals_all[:n_episodes]
+    survivals_all = survivals_all[:n_episodes]
+    total_acts = max(action_counts.sum(), 1)
+    tp = sum(1 for r in rewards_all if r >= 40)
+    fp = sum(1 for r in rewards_all if 10 <= r < 40)
+    fn = sum(1 for r in rewards_all if r < 10)
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-8)
+
+    return {
+        "policy": policy.name,
+        "episodes": len(rewards_all),
+        "avg_reward": round(float(np.mean(rewards_all)), 4),
+        "std_reward": round(float(np.std(rewards_all)), 4),
+        "avg_length": round(float(np.mean(lengths_all)), 1),
+        "avg_p_real": round(float(np.mean(p_reals_all)), 4),
+        "survival_rate": round(float(np.mean(survivals_all)), 4),
+        "f1": round(f1, 4),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "tp": tp, "fp": fp, "fn": fn,
+        "action_distribution": {
+            ACTION_NAMES[i]: round(action_counts[i] / total_acts * 100, 1)
+            for i in range(N_ACTIONS)
+        },
+        "phase_preference": {
+            f"phase_{p}": ACTION_NAMES[int(phase_actions[p].argmax())]
+            for p in range(4)
+        },
+        "rewards_raw": [round(r, 2) for r in rewards_all],
+    }
+
+
 def evaluate_policy(policy, env: DeceptionEnv, n_episodes: int, seed: int = 42):
     """Run n_episodes and collect metrics."""
     np.random.seed(seed)
 
     use_param = getattr(policy, "uses_param_env", False)
     use_legacy = getattr(policy, "uses_legacy_env", False)
+    use_vec = getattr(policy, "uses_vec_env", False)
 
-    if use_param and not use_legacy:
-        # h-DQN with 64-dim state — use VecDeceptionEnv for correct state dim
-        from honey_drone.deception_env import VecDeceptionEnv
+    # h-DQN: 64-dim state + hierarchical strategy selection
+    if use_param and not use_legacy and hasattr(policy, "hdqn"):
         return _evaluate_hdqn_vec(policy, n_episodes, seed)
-    elif use_param:
+
+    # Plain DQN with 64-dim state → VecDeceptionEnv batch eval
+    if use_vec:
+        return _evaluate_dqn_vec(policy, n_episodes, seed)
+
+    if use_param:
         eval_env = DeceptionEnv(max_steps=env.max_steps, action_mode="param")
     else:
         eval_env = env

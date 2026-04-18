@@ -188,8 +188,13 @@ def main():
     if args.apply:
         env_path = Path("config/.env")
         if not env_path.exists():
-            print(f"  --apply skipped: {env_path} does not exist")
-            return
+            example_path = Path("config/.env.example")
+            if example_path.exists():
+                env_path.write_text(example_path.read_text())
+                print(f"  Bootstrapped {env_path} from {example_path}")
+            else:
+                print(f"  --apply skipped: neither {env_path} nor {example_path} exists")
+                return
         best = ranked[0]
         lines = env_path.read_text().splitlines()
         targets = {

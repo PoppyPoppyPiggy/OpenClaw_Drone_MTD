@@ -41,6 +41,22 @@ if [ ! -x run.sh ]; then
     exit 1
 fi
 
+# Preserve trained models across runs — we only rotate runtime metrics,
+# NOT training checkpoints (train_dqn / train_hdqn / train_game outputs).
+MODELS_BACKUP=""
+if [ -d results/models ]; then
+    MODELS_BACKUP="$(mktemp -d)/models"
+    cp -r results/models "$MODELS_BACKUP"
+    echo -e "${YELLOW}  Backed up results/models → ${MODELS_BACKUP}${NC}"
+fi
+
+_restore_models() {
+    if [ -n "$MODELS_BACKUP" ] && [ -d "$MODELS_BACKUP" ]; then
+        mkdir -p results
+        cp -r "$MODELS_BACKUP" results/models
+    fi
+}
+
 for POLICY in "${POLICIES[@]}"; do
     case "$POLICY" in
         dqn|signaling_eq|hybrid) : ;;
@@ -49,26 +65,34 @@ for POLICY in "${POLICIES[@]}"; do
 
     step "Running DEFENDER_POLICY=${POLICY}"
 
-    # Clean prior run dir for this policy
+    # Clean prior archive for this policy
     OUT_DIR="results.${POLICY}"
     rm -rf "$OUT_DIR"
 
-    # Point results/ to a fresh dir so the experiment writes there
+    # Fresh results/ — but preserve models/
     rm -rf results
     mkdir -p results
+    _restore_models
 
     # Override policy in env only for this run
     DEFENDER_POLICY="$POLICY" bash run.sh || {
         echo -e "${RED}  Policy $POLICY failed — keeping partial output in results/${NC}"
     }
 
-    # Archive
+    # Archive (include a copy of models for reproducibility)
     mv results "$OUT_DIR"
     echo -e "${GREEN}  Archived → ${OUT_DIR}${NC}"
 done
 
-# Restore results/ symlink to the last run so follow-up tools still work
-ln -s "results.${POLICIES[-1]}" results 2>/dev/null || cp -r "results.${POLICIES[-1]}" results
+# Restore a usable results/ with the models intact so follow-up tools work
+rm -rf results
+mkdir -p results
+_restore_models
+# Also copy the last run's metrics into results/ for quick inspection
+LAST_DIR="results.${POLICIES[-1]}"
+if [ -d "$LAST_DIR/metrics" ]; then
+    cp -r "$LAST_DIR/metrics" results/metrics
+fi
 
 step "Summary"
 for POLICY in "${POLICIES[@]}"; do
