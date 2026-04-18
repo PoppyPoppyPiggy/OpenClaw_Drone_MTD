@@ -76,20 +76,27 @@ class DQNPolicy:
         DQN = mod.DQN
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
         ckpt = torch.load(model_path, map_location=self.device, weights_only=False)
-        # Auto-detect state_dim and n_actions from checkpoint
         sd = ckpt["policy_state_dict"]
-        ckpt_state_dim = sd["feature.0.weight"].shape[1]
-        # Output layer is last Linear — find by searching keys for value/advantage heads
-        ckpt_n_actions = None
-        for k, v in sd.items():
-            if k.endswith("weight") and v.dim() == 2 and v.shape[1] != ckpt_state_dim:
-                # heuristic: last linear with small output is the action head
-                ckpt_n_actions = v.shape[0]
+        # Prefer explicit metadata from checkpoint when present
+        ckpt_state_dim = ckpt.get("state_dim")
+        ckpt_n_actions = ckpt.get("n_actions")
+        # Fallback: infer from Dueling DQN weights.
+        # `feature.0.weight` is (hidden, state_dim); action head is the LAST
+        # `advantage.*.weight` whose row count equals n_actions.
+        if ckpt_state_dim is None:
+            ckpt_state_dim = sd["feature.0.weight"].shape[1]
         if ckpt_n_actions is None:
-            ckpt_n_actions = N_ACTIONS
-        self._state_dim = ckpt_state_dim
-        self._n_actions = ckpt_n_actions
-        self.net = DQN(ckpt_state_dim, ckpt_n_actions).to(self.device)
+            adv_keys = sorted(
+                (k for k in sd if k.startswith("advantage.") and k.endswith(".weight")),
+                key=lambda k: int(k.split(".")[1]),
+            )
+            if adv_keys:
+                ckpt_n_actions = sd[adv_keys[-1]].shape[0]
+            else:
+                ckpt_n_actions = N_ACTIONS
+        self._state_dim = int(ckpt_state_dim)
+        self._n_actions = int(ckpt_n_actions)
+        self.net = DQN(self._state_dim, self._n_actions).to(self.device)
         self.net.load_state_dict(sd)
         self.net.eval()
         self._train_ep = ckpt.get("episode", "?")

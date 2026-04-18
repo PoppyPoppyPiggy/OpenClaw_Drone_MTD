@@ -125,8 +125,14 @@ def train(
     print()
 
     env = DeceptionEnv(max_steps=200)
-    policy_net = DQN(STATE_DIM, N_ACTIONS).to(device)
-    target_net = DQN(STATE_DIM, N_ACTIONS).to(device)
+    # Use ENV's actual obs size — module-level STATE_DIM=64 is for VecDeceptionEnv;
+    # single-agent DeceptionEnv._observe() returns a 10-dim vector.
+    actual_state_dim = int(env.reset().shape[0])
+    if actual_state_dim != STATE_DIM:
+        print(f"  Note: env obs dim={actual_state_dim} (module STATE_DIM={STATE_DIM} "
+              f"is for VecDeceptionEnv; single-agent mode uses {actual_state_dim}-dim)")
+    policy_net = DQN(actual_state_dim, N_ACTIONS).to(device)
+    target_net = DQN(actual_state_dim, N_ACTIONS).to(device)
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
@@ -217,6 +223,8 @@ def train(
                 "policy_state_dict": policy_net.state_dict(),
                 "episode": ep,
                 "avg_reward": avg_reward,
+                "state_dim": actual_state_dim,
+                "n_actions": N_ACTIONS,
             }, model_dir / "dqn_deception_agent.pt")
         else:
             no_improve_count += 1
