@@ -83,6 +83,7 @@ from evaluation.deception_metrics import (
     compute_confusion_score_realtime,
 )
 from honey_drone.behavior_learner import BehaviorLearner
+from honey_drone.signaling_game_solver import SignalingGameSolver, build_from_env
 
 logger = get_logger(__name__)
 
@@ -195,6 +196,19 @@ class OpenClawAgent:
             model_dir=_model_dir,
             policy_mode=_policy_mode,
         )
+        # ── Signaling Game solver (C3 contribution) ─────────────
+        # DEFENDER_POLICY ∈ {dqn, signaling_eq, hybrid}
+        # [Eq.SG — Crawford-Sobel 1982 / Pawlick-Zhu 2021 Eq.10]
+        self._defender_policy: str = os.environ.get("DEFENDER_POLICY", "dqn").strip().lower()
+        if self._defender_policy not in {"dqn", "signaling_eq", "hybrid"}:
+            self._defender_policy = "dqn"
+        self._signaling_solver: Optional[SignalingGameSolver] = (
+            build_from_env() if self._defender_policy != "dqn" else None
+        )
+        self._hybrid_step: int = 0   # alternates between DQN and signaling-eq
+        self._last_policy_used: str = "dqn"
+        self._last_policy_debug: dict = {}
+
         self._pre_action_mu: float = 0.7  # actual Bayesian belief BEFORE action
         self._pre_action_packets: int = 0      # packet count BEFORE action
         self._last_action_idx: int = -1
@@ -495,18 +509,27 @@ class OpenClawAgent:
                     self._behavior_learner.update(
                         self._last_action_idx, reward, self._last_action_context,
                     )
+                    # Signaling-Game EMA feedback (only when solver picked last)
+                    if self._signaling_solver is not None and self._last_policy_used in ("signaling_eq", "hybrid"):
+                        post_mu = self._get_real_mu_a()
+                        self._signaling_solver.observe_outcome(
+                            skill_idx=self._last_action_idx,
+                            delta_mu=post_mu - self._pre_action_mu,
+                            reward=reward,
+                        )
 
                 # ── Build context from current attack state ──
                 context = self._build_mab_context()
 
-                # ── Select action via LinUCB ──
-                action_idx, action_name, debug = self._behavior_learner.select_action(context)
+                # ── Select action per DEFENDER_POLICY ──
+                action_idx, action_name, debug = self._select_defender_action(context)
 
                 # ── Record pre-action state for causal reward ──
                 self._pre_action_mu = self._get_real_mu_a()
                 self._pre_action_packets = self._get_real_packet_count()
                 self._last_action_idx = action_idx
                 self._last_action_context = context
+                self._last_policy_debug = debug
 
                 # ── Execute selected action (non-blocking) ──
                 # Long actions (flight_sim=60s, reboot=15s) run in background
@@ -528,6 +551,51 @@ class OpenClawAgent:
                     drone_id=self._config.drone_id,
                     error=str(e),
                 )
+
+    def _select_defender_action(self, context: dict) -> tuple[int, str, dict]:
+        """
+        [ROLE] DEFENDER_POLICY 에 따라 skill 선택 엔진 분기.
+               dqn         — BehaviorLearner (LinUCB / DQN policy)
+               signaling_eq — SignalingGameSolver (Perfect Bayesian Equilibrium)
+               hybrid      — 짝수 step: DQN, 홀수 step: signaling_eq
+
+        [REF] Crawford & Sobel (1982) Eq.SG / Pawlick & Zhu (2021) Eq.10
+        """
+        mode = self._defender_policy
+
+        if mode == "hybrid":
+            self._hybrid_step += 1
+            mode_now = "signaling_eq" if (self._hybrid_step % 2) else "dqn"
+        else:
+            mode_now = mode
+
+        if mode_now == "signaling_eq" and self._signaling_solver is not None:
+            idx, name, debug = self._signaling_solver.select_skill(
+                mu_a=float(context.get("avg_p_real", 0.7)),
+                phase=int(context.get("phase_val", 0)),
+                context=context,
+            )
+            debug["policy"] = "signaling_eq"
+            self._last_policy_used = "signaling_eq"
+            return idx, name, debug
+
+        # Default: DQN / LinUCB
+        idx, name, debug = self._behavior_learner.select_action(context)
+        if not isinstance(debug, dict):
+            debug = {}
+        debug["policy"] = "dqn"
+        self._last_policy_used = "dqn"
+        return idx, name, debug
+
+    def get_signaling_snapshot(self) -> Optional[dict]:
+        """[ROLE] periodic_save 에서 Signaling Game 상태를 저장하기 위한 접근자."""
+        if self._signaling_solver is None:
+            return None
+        snap = self._signaling_solver.snapshot()
+        snap["defender_policy"] = self._defender_policy
+        snap["last_policy_used"] = self._last_policy_used
+        snap["last_policy_debug"] = self._last_policy_debug
+        return snap
 
     def _build_mab_context(self) -> dict:
         """

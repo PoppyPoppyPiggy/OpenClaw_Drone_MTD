@@ -44,6 +44,8 @@ from cti_pipeline.attack_event_parser import AttackEventParser
 DRONE_ID = os.environ.get("DRONE_ID", "honey_01")
 INDEX = int(os.environ.get("INDEX", "1"))
 RESULTS_DIR = os.environ.get("RESULTS_DIR", "/results")
+FCU_HOST = os.environ.get("FCU_HOST", "")
+FCU_PORT = int(os.environ.get("FCU_PORT", "5760"))
 
 # ── Breadcrumb material ──────────────────────────────────────────────────────
 _SIGNING_KEY = hashlib.md5(DRONE_ID.encode()).hexdigest()
@@ -325,16 +327,102 @@ async def start_engine():
     global engine
     config = HoneyDroneConfig(
         drone_id=DRONE_ID, index=INDEX,
-        sitl_port=5760,
+        sitl_port=FCU_PORT,
         mavlink_port=14550,
         webclaw_port=18789,
         http_port=80,
         rtsp_port=8554,
+        fcu_host=FCU_HOST or f"fcu-{DRONE_ID.replace('_', '-')}",
     )
     engine = AgenticDecoyEngine(config, mtd_trigger_q, cti_event_q)
     await engine.start()
     _log("engine_started", mode="real_openclaw",
-         mavlink=14550, webclaw=18789)
+         mavlink=14550, webclaw=18789, fcu=config.fcu_host)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# FCU Bridge — relay real ArduPilot SITL telemetry to attacker
+#
+# Role: DVD flight-controller container runs ArduPilot SITL (TCP :5760). We
+# connect as a GCS client and forward selected telemetry messages (HEARTBEAT,
+# GLOBAL_POSITION_INT, ATTITUDE, VFR_HUD, SYS_STATUS) to attacker-facing UDP
+# :14550. This lets the honeydrone present real SITL physics instead of only
+# hand-crafted responses → harder for attacker to fingerprint as synthetic.
+#
+# OpenClawAgent still intercepts and may override/silence/mutate — bridge is
+# the BASELINE realism layer; agent is the ADAPTIVE deception layer on top.
+# ═════════════════════════════════════════════════════════════════════════════
+
+_FCU_RELAY_MSG_IDS = {
+    0,    # HEARTBEAT
+    1,    # SYS_STATUS
+    24,   # GPS_RAW_INT
+    30,   # ATTITUDE
+    33,   # GLOBAL_POSITION_INT
+    74,   # VFR_HUD
+    42,   # MISSION_CURRENT
+}
+
+
+async def fcu_bridge():
+    """Connect to ArduPilot SITL TCP and relay telemetry to attacker UDP."""
+    if not FCU_HOST:
+        _log("fcu_bridge_disabled", reason="FCU_HOST not set")
+        return
+
+    backoff = 1.0
+    while True:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(FCU_HOST, FCU_PORT), timeout=10.0,
+            )
+            _log("fcu_bridge_connected", host=FCU_HOST, port=FCU_PORT)
+            backoff = 1.0
+
+            from pymavlink import mavutil
+            parser = mavutil.mavlink.MAVLink(file=None)
+            parser.robust_parsing = True
+
+            out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            out_sock.setblocking(False)
+
+            relayed = 0
+            while True:
+                chunk = await asyncio.wait_for(reader.read(4096), timeout=15.0)
+                if not chunk:
+                    break
+                try:
+                    msgs = parser.parse_buffer(chunk) or []
+                except Exception:
+                    msgs = []
+                for msg in msgs:
+                    if msg.get_msgId() not in _FCU_RELAY_MSG_IDS:
+                        continue
+                    if engine is None:
+                        continue
+                    buf = msg.get_msgbuf()
+                    for addr in engine.get_active_attackers():
+                        try:
+                            out_sock.sendto(buf, addr)
+                            relayed += 1
+                        except OSError:
+                            pass
+                if relayed and relayed % 100 == 0:
+                    _log("fcu_bridge_relayed", count=relayed)
+        except asyncio.CancelledError:
+            break
+        except (asyncio.TimeoutError, ConnectionError, OSError) as e:
+            _log("fcu_bridge_disconnected", error=str(e), retry_in=backoff)
+            try:
+                writer.close()
+            except Exception:
+                pass
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2.0, 30.0)
+        except Exception as e:
+            _log("fcu_bridge_error", error=str(e))
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2.0, 30.0)
 
 
 async def mtd_consumer():
@@ -439,11 +527,22 @@ async def periodic_save():
             (metrics_dir / f"decisions_{DRONE_ID}.json").write_text(
                 json.dumps(decisions, indent=2, default=str))
 
+            # Signaling Game snapshot (μ_A, mixing, per-skill EMA) — C3 evidence
+            sig_snap = None
+            if engine and engine._openclaw_agent:
+                sig_snap = engine._openclaw_agent.get_signaling_snapshot()
+            if sig_snap is not None:
+                sig_snap["drone_id"] = DRONE_ID
+                sig_snap["timestamp"] = time.time()
+                (metrics_dir / f"signaling_game_{DRONE_ID}.json").write_text(
+                    json.dumps(sig_snap, indent=2, default=str))
+
             _log("metrics_saved",
                  mtd=len(all_mtd_results),
                  cti=len(all_cti_events),
                  decisions=len(decisions),
-                 confusion=confusion_data["avg_confusion_score"])
+                 confusion=confusion_data["avg_confusion_score"],
+                 signaling=(sig_snap or {}).get("defender_policy"))
         except Exception as e:
             _log("metrics_save_error", error=str(e))
 
@@ -490,6 +589,7 @@ async def main():
     tasks = [
         asyncio.create_task(start_rtsp()),
         asyncio.create_task(ghost_mavlink_broadcaster()),
+        asyncio.create_task(fcu_bridge()),  # ArduPilot SITL → attacker relay
         asyncio.create_task(mtd_consumer()),
         asyncio.create_task(cti_consumer()),
         asyncio.create_task(periodic_save()),

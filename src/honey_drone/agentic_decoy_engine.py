@@ -214,6 +214,17 @@ class AgenticDecoyEngine:
             return 0.0  # 관측 없음 — 기만 성공과 구별
         return sum(b.mu_a for b in beliefs) / len(beliefs)
 
+    def get_active_attackers(self) -> list[tuple[str, int]]:
+        """
+        [ROLE] 현재 활성 공격자 (ip, port) 목록 반환.
+               fcu_bridge 등 외부 relay 모듈이 엔진과 같은 공격자 대상으로
+               패킷을 송신할 때 사용.
+
+        [DATA FLOW]
+            EngagementTracker.get_active_attacker_addrs(drone_id) ──▶ list[(ip, port)]
+        """
+        return self._tracker.get_active_attacker_addrs(self._config.drone_id)
+
     def get_belief_states(self) -> list:
         """
         [ROLE] 모든 공격자 믿음 상태 반환 (메트릭 저장용).

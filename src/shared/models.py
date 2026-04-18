@@ -256,6 +256,7 @@ class HoneyDroneConfig:
     webclaw_port   : int    # OpenClaw WebSocket 포트 (18790+)
     http_port      : int    # CC Web UI HTTP (8081+)
     rtsp_port      : int    # RTSP 카메라 스트림 (8554+)
+    fcu_host       : str    = "fcu-honey-01"   # ArduPilot SITL host (compose service name)
     docker_image   : str    = "nicholasaleks/dvd-companion-computer:latest"
     fcu_image      : str    = "nicholasaleks/dvd-flight-controller:latest"
     network        : str    = "honey_isolated"
