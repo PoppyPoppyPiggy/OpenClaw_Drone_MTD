@@ -36,8 +36,16 @@
 version: "3.9"
 
 # ── 공유 설정 앵커 ────────────────────────────────────────────
+# FCU image — defaults to our local fcu-stub build because the DVD
+# `nicholasaleks/dvd-flight-controller:latest` image is not published on
+# Docker Hub (it must be built from the DVD repo). If you've built the DVD
+# image locally or want real ArduPilot SITL, set FCU_IMAGE=nicholasaleks/…
+# in config/.env.
 x-fcu-base: &fcu-base
-  image: nicholasaleks/dvd-flight-controller:latest
+  image: ${FCU_IMAGE:-mirage-fcu-stub:latest}
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.fcu-stub
   restart: "no"
   networks:
     - internal
@@ -49,10 +57,10 @@ x-fcu-base: &fcu-base
     - SYS_PTRACE
   security_opt:
     - no-new-privileges:true
-  mem_limit: 1g
-  cpus: "1.5"
+  mem_limit: 512m
+  cpus: "1.0"
   volumes:
-    - ./results/logs:/app/logs:rw
+    - ../results/logs:/app/logs:rw
 
 x-cc-base: &cc-base
   # MIRAGE-UAS honeydrone with REAL OpenClaw AgenticDecoyEngine (OODA + Signaling Game)
@@ -75,9 +83,9 @@ x-cc-base: &cc-base
   mem_limit: 768m
   cpus: "1.0"
   volumes:
-    - ./results/logs:/app/logs:rw
-    - ./results:/results:rw
-    - ./config/.env:/app/config/.env:ro
+    - ../results/logs:/app/logs:rw
+    - ../results:/results:rw
+    - ../config/.env:/app/config/.env:ro
 
 # ── Services ─────────────────────────────────────────────────
 services:
@@ -102,11 +110,11 @@ services:
       dvd.drone_id: "honey_01"
       dvd.attacker_facing: "false"
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 5760 || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',5760)); s.close()\""]
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 20s
 
   cc-honey-01:
     <<: *cc-base
@@ -160,11 +168,11 @@ services:
       dvd.drone_id: "honey_02"
       dvd.attacker_facing: "false"
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 5760 || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',5760)); s.close()\""]
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 20s
 
   cc-honey-02:
     <<: *cc-base
@@ -217,11 +225,11 @@ services:
       dvd.drone_id: "honey_03"
       dvd.attacker_facing: "false"
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 5760 || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',5760)); s.close()\""]
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 20s
 
   cc-honey-03:
     <<: *cc-base
@@ -260,7 +268,12 @@ services:
   # 비행 상태 트리거: Boot/Arm/Takeoff/Land
   # ════════════════════════════════
   simulator:
-    image: nicholasaleks/dvd-simulator:lite
+    # DVD simulator:lite image is not published on Docker Hub (requires
+    # building from the DVD repo). Marked as optional via the `with-sim`
+    # profile so default `docker compose up` skips it. Enable with:
+    #   docker compose --profile with-sim up
+    profiles: ["with-sim"]
+    image: ${SIMULATOR_IMAGE:-nicholasaleks/dvd-simulator:lite}
     container_name: dvd_simulator
     hostname: simulator
     networks:
@@ -273,7 +286,7 @@ services:
       - DRONE_TARGETS=fcu-honey-01:5760,fcu-honey-02:5760,fcu-honey-03:5760
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ./results/logs:/app/logs:rw
+      - ../results/logs:/app/logs:rw
     mem_limit: 512m
     cpus: "0.5"
     cap_drop:
@@ -306,9 +319,9 @@ services:
       - "127.0.0.1:19552:19552/udp"
       - "127.0.0.1:19553:19553/udp"
     volumes:
-      - ./src:/app/src:ro
-      - ./config/.env:/app/.env:ro
-      - ./results:/app/results:rw
+      - ../src:/app/src:ro
+      - ../config/.env:/app/.env:ro
+      - ../results:/app/results:rw
     working_dir: /app
     command: >
       sh -c "pip install -q pymavlink python-dotenv structlog stix2 aiohttp &&
@@ -344,9 +357,9 @@ services:
     ports:
       - "127.0.0.1:${CTI_API_PORT:-8765}:8765"
     volumes:
-      - ./src:/app/src:ro
-      - ./config/.env:/app/.env:ro
-      - ./results:/app/results:rw
+      - ../src:/app/src:ro
+      - ../config/.env:/app/.env:ro
+      - ../results:/app/results:rw
     working_dir: /app
     command: >
       sh -c "pip install -q fastapi uvicorn python-dotenv stix2 structlog &&

@@ -154,7 +154,7 @@ if [[ $SKIP_INSTALL -eq 0 ]]; then
     step "Python dependencies"
     python3 -m pip install -q \
         pymavlink websockets aiohttp python-dotenv structlog stix2 numpy \
-        matplotlib scipy fastapi uvicorn pyyaml aiofiles \
+        matplotlib scipy statsmodels fastapi uvicorn pyyaml aiofiles \
         2>&1 | tail -1 || warn "pip install reported warnings"
     if command -v nvidia-smi >/dev/null 2>&1; then
         step "CUDA GPU detected"
@@ -224,15 +224,43 @@ PY
 ok ".env ready"
 
 step "Docker availability"
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    DOCKER_OK=1
-    ok "docker daemon reachable — docker phase will run"
-else
-    DOCKER_OK=0
+DOCKER_CMD="docker"
+DOCKER_OK=0
+if command -v docker >/dev/null 2>&1; then
+    if docker info >/dev/null 2>&1; then
+        DOCKER_OK=1
+        ok "docker daemon reachable as current user"
+    elif id -nG "$(id -un)" | grep -qw docker; then
+        # User is in docker group but group not yet applied to this shell.
+        # Use sg(1) to enter the docker group context for each docker call.
+        if sg docker -c 'docker info' >/dev/null 2>&1; then
+            DOCKER_CMD="sg docker -c"
+            DOCKER_OK=1
+            ok "docker reachable via 'sg docker -c' (new group not yet in shell)"
+        fi
+    fi
+fi
+if [[ $DOCKER_OK -eq 0 ]]; then
     warn "docker not available — phase 3 will be SKIPPED"
     warn "Install: bash scripts/install_docker.sh && newgrp docker"
     SKIP_DOCKER=1
 fi
+export DOCKER_CMD DOCKER_OK
+
+# _docker: run arbitrary docker/compose commands under the right group context
+# Usage:  _docker ps
+#         _docker compose -f config/docker-compose.honey.yml up -d
+_docker() {
+    if [[ "$DOCKER_CMD" == "docker" ]]; then
+        docker "$@"
+    else
+        # sg wraps the command string; escape args safely.
+        local cmd=(docker "$@")
+        local joined
+        printf -v joined '%q ' "${cmd[@]}"
+        sg docker -c "${joined}"
+    fi
+}
 
 # ──────────── PHASE 1: Host-level verification ────────────────────────────────
 if [[ $ONLY_SWEEP -eq 0 && $SKIP_VERIFY -eq 0 ]]; then
@@ -297,12 +325,27 @@ run_docker_stack() {
     local level_duration="$2"
     local phase_id="$3"
 
+    step "building mirage-fcu-stub:latest"
+    if _docker images --format '{{.Repository}}:{{.Tag}}' | grep -q '^mirage-fcu-stub:latest$'; then
+        ok "mirage-fcu-stub already built (reuse)"
+    else
+        run_phase "${phase_id}a1" build_fcu_stub \
+            _docker build -f docker/Dockerfile.fcu-stub -t mirage-fcu-stub:latest .
+    fi
+
     step "building mirage-honeydrone:latest"
     run_phase "${phase_id}a" build_honeydrone  bash scripts/build_honeydrone.sh
 
+    step "building mirage-attacker:latest"
+    if _docker images --format '{{.Repository}}:{{.Tag}}' | grep -q '^mirage-attacker:latest$'; then
+        ok "mirage-attacker already built (reuse)"
+    else
+        run_phase "${phase_id}a2" build_attacker \
+            _docker build -f docker/Dockerfile.attacker -t mirage-attacker:latest .
+    fi
+
     step "bringing up compose stack (policy=${policy})"
-    DEFENDER_POLICY="$policy" \
-    docker compose -f config/docker-compose.honey.yml \
+    DEFENDER_POLICY="$policy" _docker compose -f config/docker-compose.honey.yml \
                    --env-file config/.env \
                    --project-name "mirage" up -d --remove-orphans 2>&1 | tee "${LOG_ROOT}/phase_${phase_id}b_compose_up.log"
 
@@ -311,7 +354,7 @@ run_docker_stack() {
         local healthy=0
         for N in 1 2 3; do
             local state
-            state=$(docker inspect -f '{{.State.Health.Status}}' "cc_honey_0${N}" 2>/dev/null || echo none)
+            state=$(_docker inspect -f '{{.State.Health.Status}}' "cc_honey_0${N}" 2>/dev/null || echo none)
             [[ "$state" == "healthy" ]] && healthy=$((healthy+1))
         done
         if [[ $healthy -eq 3 ]]; then
@@ -321,22 +364,29 @@ run_docker_stack() {
         sleep 5
     done
     for N in 1 2 3; do
-        docker logs --tail 15 "cc_honey_0${N}" 2>&1 | sed "s/^/    [cc_honey_0${N}] /" \
+        _docker logs --tail 15 "cc_honey_0${N}" 2>&1 | sed "s/^/    [cc_honey_0${N}] /" \
             > "${LOG_ROOT}/phase_${phase_id}c_boot_cc_honey_0${N}.log" 2>&1 || true
     done
 
     step "attacker L0-L4 (${level_duration}s per level)"
     export ATTACKER_LEVEL_DURATION_SEC="$level_duration"
+    # Run attacker simulator as a standalone container joined to honey_net.
+    # We use our own mirage-attacker image (built above). The network name
+    # is defined by DOCKER_NETWORK_NAME in config/.env (default: honey_isolated).
+    local atk_net="${DOCKER_NETWORK_NAME:-honey_isolated}"
     run_phase "${phase_id}d" attacker_run \
-        docker compose -f config/docker-compose.honey.yml --project-name mirage \
-            run --rm --name mirage_attacker \
+        _docker run --rm --name mirage_attacker \
+            --network "$atk_net" \
             -e "ATTACKER_LEVEL_DURATION_SEC=${level_duration}" \
-            -e "HONEY_DRONE_TARGETS=172.30.0.11:14550,172.30.0.12:14550,172.30.0.13:14550" \
-            cti-interceptor \
-            python3 /app/scripts/attacker_sim.py || warn "attacker run returned non-zero"
+            -e "HONEY_DRONE_TARGETS=cc-honey-01:14550,cc-honey-02:14550,cc-honey-03:14550" \
+            -e "WEBCLAW_PORT_BASE=18789" \
+            -e "HTTP_PORT_BASE=80" \
+            -e "RESULTS_DIR=/results" \
+            -v "${ROOT}/results:/results:rw" \
+            mirage-attacker:latest || warn "attacker run returned non-zero"
 
     step "tearing down compose stack"
-    docker compose -f config/docker-compose.honey.yml --project-name mirage down --remove-orphans 2>&1 \
+    _docker compose -f config/docker-compose.honey.yml --project-name mirage down --remove-orphans 2>&1 \
         | tee "${LOG_ROOT}/phase_${phase_id}e_compose_down.log" || true
 }
 
@@ -363,15 +413,31 @@ if [[ $ONLY_SWEEP -eq 0 && $SKIP_ANALYSIS -eq 0 ]]; then
 
     # Compute merged metrics if docker ran
     if [[ -f results/attacker_log.jsonl ]]; then
-        step "4.3 compute_all_metrics (DeceptionScore, tables II-VI)"
-        run_phase 04c compute_all         python3 -c "
-import sys; sys.path.insert(0,'src')
-from dotenv import load_dotenv; load_dotenv('config/.env')
-from evaluation.compute_all import compute_all_metrics
-r = compute_all_metrics('results/attacker_log.jsonl', 'results')
-print(f'  DES={r[\"deception_score\"]:.4f}  confusion={r[\"avg_confusion_score\"]:.4f}  '
-      f'sessions={r[\"total_sessions\"]}  TTPs={r[\"unique_ttps\"]}')
-" || warn "compute_all_metrics failed"
+        step "4.3 merge per-drone metrics (confusion/CTI/decisions)"
+        run_phase 04c merge_metrics       python3 -c "
+import json, sys
+from pathlib import Path
+m = Path('results/metrics')
+# Confusion merge
+scores = []
+for f in sorted(m.glob('confusion_honey_*.json')):
+    scores.append(json.loads(f.read_text()).get('avg_confusion_score', 0.5))
+avg = round(sum(scores)/max(len(scores),1), 4)
+(m / 'confusion_scores.json').write_text(json.dumps({'avg_confusion_score': avg, 'n': len(scores)}, indent=2))
+# CTI merge
+ttps = set(); events = 0
+for f in sorted(m.glob('cti_honey_*.json')):
+    d = json.loads(f.read_text())
+    ttps.update(d.get('unique_ttps', []))
+    events += d.get('total_events', 0)
+(m / 'live_cti_summary.json').write_text(json.dumps({'unique_ttps': sorted(ttps), 'total_events': events}, indent=2))
+# Decisions merge
+decisions = []
+for f in sorted(m.glob('decisions_honey_*.json')):
+    decisions += json.loads(f.read_text())
+(m / 'live_agent_decisions.json').write_text(json.dumps(decisions, indent=2, default=str))
+print(f'  avg_confusion={avg} unique_TTPs={len(ttps)} decisions={len(decisions)}')
+" || warn "merge_metrics failed"
 
         step "4.4 figures + LaTeX"
         run_phase 04d figures             python3 -c "
