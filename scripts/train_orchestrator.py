@@ -302,7 +302,7 @@ class CudaMarkovGameEnv:
       - Fused operations
     """
 
-    _PH, _LV, _PR, _DW, _SF, _CG, _GV, _IS = range(8)
+    _PH, _LV, _MU, _DW, _SF, _CG, _GV, _IS = range(8)
     _EA, _EV, _HC, _GA, _CP, _SS, _TP, _SC = range(8, 16)
     _LDA, _LTA = 16, 17
     _N_STATE = 18
@@ -367,7 +367,7 @@ class CudaMarkovGameEnv:
         N = self.n_envs
         self._raw.zero_()
         self._raw[:, self._LV] = torch.randint(0, 3, (N,), device=self.device).float()
-        self._raw[:, self._PR] = 0.7 + 0.05 * torch.randn(N, device=self.device)
+        self._raw[:, self._MU] = 0.7 + 0.05 * torch.randn(N, device=self.device)
         self._raw[:, self._LDA] = -1.0
         self._raw[:, self._LTA] = -1.0
         return self._obs_def(), self._obs_atk()
@@ -378,7 +378,7 @@ class CudaMarkovGameEnv:
             return
         self._raw[mask] = 0.0
         self._raw[mask, self._LV] = torch.randint(0, 3, (n,), device=self.device).float()
-        self._raw[mask, self._PR] = 0.7 + 0.05 * torch.randn(n, device=self.device)
+        self._raw[mask, self._MU] = 0.7 + 0.05 * torch.randn(n, device=self.device)
         self._raw[mask, self._LDA] = -1.0
         self._raw[mask, self._LTA] = -1.0
 
@@ -453,9 +453,9 @@ class CudaMarkovGameEnv:
         raw[:, self._HC] += atk_ver.float()
         check_pwr = detect * (0.5 + 0.1 * raw[:, self._HC])
         lr_chk = (1.0 - check_pwr).clamp(min=0.2)
-        p = raw[:, self._PR].clamp(0.01, 0.99)
-        raw[:, self._PR] = torch.where(
-            atk_ver, (lr_chk * p) / (lr_chk * p + 1.0 * (1 - p)), raw[:, self._PR])
+        p = raw[:, self._MU].clamp(0.01, 0.99)
+        raw[:, self._MU] = torch.where(
+            atk_ver, (lr_chk * p) / (lr_chk * p + 1.0 * (1 - p)), raw[:, self._MU])
 
         # Lateral pivot
         raw[:, self._PH] = torch.where(atk_lat, torch.zeros(N, device=self.device), raw[:, self._PH])
@@ -468,17 +468,17 @@ class CudaMarkovGameEnv:
         # Apply defender belief (Bayesian)
         apply = ~atk_disc & (def_eff != 0)
         lr_d = torch.where(def_eff > 0, 1.0 + def_eff * 8, (1.0 + def_eff * 8).clamp(min=0.1))
-        p = raw[:, self._PR].clamp(0.01, 0.99)
+        p = raw[:, self._MU].clamp(0.01, 0.99)
         new_p = (lr_d * p) / (lr_d * p + 1.0 * (1 - p))
-        raw[:, self._PR] = torch.where(apply, new_p, raw[:, self._PR])
+        raw[:, self._MU] = torch.where(apply, new_p, raw[:, self._MU])
 
         # Evasion
         ev_prob = self._atk_evasion[phase, atk_a.clamp(max=6)]
-        ev_prob = torch.where(raw[:, self._PR] < 0.5, ev_prob * 1.5, ev_prob).clamp(max=0.5)
+        ev_prob = torch.where(raw[:, self._MU] < 0.5, ev_prob * 1.5, ev_prob).clamp(max=0.5)
         ev_hit = (torch.rand(N, device=self.device) < ev_prob) & ~atk_disc
         raw[:, self._EV] += ev_hit.float()
-        p = raw[:, self._PR].clamp(0.01, 0.99)
-        raw[:, self._PR] = torch.where(ev_hit, (0.3 * p) / (0.3 * p + (1 - p)), raw[:, self._PR])
+        p = raw[:, self._MU].clamp(0.01, 0.99)
+        raw[:, self._MU] = torch.where(ev_hit, (0.3 * p) / (0.3 * p + (1 - p)), raw[:, self._MU])
 
         # Phase advancement
         adv_prob = self._atk_phase_adv[phase, atk_a.clamp(max=6)]
@@ -488,11 +488,12 @@ class CudaMarkovGameEnv:
         lup = adv & (raw[:, self._LV] < 4) & (torch.rand(N, device=self.device) < 0.3)
         raw[:, self._LV] += lup.float()
 
-        # ── Rewards ──
-        r_bel = (def_eff * 8).clamp(-1, 1)
+        # ── Rewards (Signaling Game Payoff — Pawlick Eq.3) ──
+        r_dwell = torch.full((N,), 0.3, device=self.device)
         r_eng = atk_eng.float()
+        r_intel_d = (raw[:, self._PH] / 3).clamp(max=1) * 0.5 + (raw[:, self._IS] / 5).clamp(max=1) * 0.5
         r_saf = torch.where(raw[:, self._EV] > 0, -0.3 * (raw[:, self._EV] / 3).clamp(max=1), torch.zeros(N, device=self.device))
-        r_def = 0.35 * r_bel + 0.25 * r_eng + 0.25 * 0.3 + 0.15 * r_saf
+        r_def = 0.30 * r_dwell + 0.25 * r_eng + 0.25 * r_intel_d + 0.20 * r_saf
 
         r_int = (atk_intel * 2).clamp(max=1)
         r_prg = raw[:, self._PH] / 3.0
@@ -501,24 +502,23 @@ class CudaMarkovGameEnv:
         r_rsk = torch.where(raw[:, self._EV] > 0, -0.3 * (raw[:, self._EV] / 3).clamp(max=1), torch.zeros(N, device=self.device))
         r_atk = 0.30 * r_int + 0.25 * r_prg + 0.25 * r_eff + 0.20 * r_rsk
 
-        # Terminal
+        # Terminal — mu_a < 0.2 hard threshold REMOVED (Signaling Game)
         d_disc = atk_disc
-        d_preal = raw[:, self._PR] < 0.2
         d_steps = raw[:, self._SC] >= self.max_steps
         d_evas = raw[:, self._EV] >= 5
 
         dwell_ratio = (raw[:, self._DW] / 600).clamp(max=1)
+        phase_depth = (raw[:, self._PH] / 3).clamp(max=1)
+
         r_def = torch.where(d_disc, r_def + (raw[:, self._DW] / 300).clamp(max=2) + 1, r_def)
         r_atk = torch.where(d_disc, r_atk + raw[:, self._IS] * 0.3 - 2 * (1 - dwell_ratio), r_atk)
-        r_def = torch.where(d_preal & ~d_disc, r_def - 5, r_def)
-        r_atk = torch.where(d_preal & ~d_disc, r_atk + 3, r_atk)
-        r_def = torch.where(d_steps & ~d_preal & ~d_disc, r_def + 3 + raw[:, self._PR] * 2, r_def)
-        r_atk = torch.where(d_steps & ~d_preal & ~d_disc, r_atk + raw[:, self._IS] * 0.3 - 1, r_atk)
-        r_def = torch.where(d_evas & ~d_preal & ~d_steps & ~d_disc, r_def - 2, r_def)
-        r_atk = torch.where(d_evas & ~d_preal & ~d_steps & ~d_disc, r_atk - 1, r_atk)
+        r_def = torch.where(d_steps & ~d_disc, r_def + 3 + phase_depth * 2, r_def)
+        r_atk = torch.where(d_steps & ~d_disc, r_atk + raw[:, self._IS] * 0.3 - 1, r_atk)
+        r_def = torch.where(d_evas & ~d_steps & ~d_disc, r_def - 2, r_def)
+        r_atk = torch.where(d_evas & ~d_steps & ~d_disc, r_atk - 1, r_atk)
 
-        dones = d_disc | d_preal | d_steps | d_evas
-        info = {"p_real": raw[:, self._PR].clone(), "dones": dones.clone()}
+        dones = d_disc | d_steps | d_evas
+        info = {"mu_a": raw[:, self._MU].clone(), "dones": dones.clone()}
 
         od = self._obs_def()
         oa = self._obs_atk()
@@ -530,7 +530,7 @@ class CudaMarkovGameEnv:
         obs = torch.stack([
             raw[:, self._PH] / 3,
             (raw[:, self._LV] / 4).clamp(max=1),
-            raw[:, self._PR],
+            raw[:, self._MU],
             (raw[:, self._DW] / 600).clamp(max=1),
             ((raw[:, self._SF] + raw[:, self._EA]) / 100).clamp(max=1),
             (raw[:, self._SF] / 10).clamp(max=1),
@@ -544,12 +544,12 @@ class CudaMarkovGameEnv:
     def _obs_atk(self) -> torch.Tensor:
         raw = self._raw
         N = self.n_envs
-        quality = (0.5 + 0.3 * (raw[:, self._PR] - 0.5)
+        quality = (0.5 + 0.3 * (raw[:, self._MU] - 0.5)
                    + 0.05 * torch.randn(N, device=self.device)).clamp(0, 1)
         timing = torch.where(raw[:, self._SS] > 0, torch.full((N,), 0.3, device=self.device),
                              torch.ones(N, device=self.device))
         ea = raw[:, self._EA]
-        expl_rate = torch.where(ea > 0, (0.3 + 0.5 * raw[:, self._PR]).clamp(max=1),
+        expl_rate = torch.where(ea > 0, (0.3 + 0.5 * raw[:, self._MU]).clamp(max=1),
                                 torch.zeros(N, device=self.device))
         obs = torch.stack([
             raw[:, self._PH] / 3,

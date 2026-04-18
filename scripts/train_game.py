@@ -210,9 +210,7 @@ def evaluate_matchup(
             ep_r_d += r_d
             ep_r_a += r_a
             if done:
-                if info.get("p_real", 1.0) < 0.2:
-                    outcomes["atk_win"] += 1
-                elif env.state.step_count >= 200:
+                if env.state.step_count >= 200:
                     outcomes["timeout"] += 1  # defender wins
                 elif env.state.evasion_signals >= 5:
                     outcomes["evasion"] += 1

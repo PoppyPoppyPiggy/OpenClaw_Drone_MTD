@@ -103,7 +103,10 @@ class AttackerBeliefState:
     attacker_ip        : str
     drone_id           : str
     # P(real_drone | observations) — 공격자가 진짜 드론이라고 믿을 확률
-    p_believes_real    : float = 0.7    # 초기 prior: 70% "진짜"라고 믿음
+    # μ_A(θ|m): attacker's posterior belief about defender type
+    # [REF] Pawlick & Zhu (2021) "Game Theory for Cyber Deception" Eq.10
+    # θ₁=honeypot, θ₂=real → μ_A = P(θ₂|observations)
+    mu_a               : float = 0.7    # 초기 prior: 70% "진짜"라고 믿음
     # 관측 이력
     total_observations : int   = 0
     breadcrumbs_seen   : int   = 0
@@ -118,9 +121,9 @@ class AttackerBeliefState:
     @property
     def belief_target(self) -> BeliefTarget:
         """공격자의 주된 믿음 판단."""
-        if self.p_believes_real >= 0.7:
+        if self.mu_a >= 0.7:
             return BeliefTarget.REAL_DRONE
-        if self.p_believes_real <= 0.3:
+        if self.mu_a <= 0.3:
             return BeliefTarget.HONEYPOT
         return BeliefTarget.UNKNOWN
 
@@ -128,9 +131,9 @@ class AttackerBeliefState:
     def deception_success_score(self) -> float:
         """
         [ROLE] 기만 성공 점수 [0.0, 1.0].
-               p_believes_real이 높을수록 기만 성공적.
+               mu_a이 높을수록 기만 성공적.
         """
-        return self.p_believes_real
+        return self.mu_a
 
     @property
     def dwell_time_sec(self) -> float:
@@ -140,7 +143,7 @@ class AttackerBeliefState:
         return (
             f"AttackerBeliefState(ip={self.attacker_ip}, "
             f"drone={self.drone_id}, "
-            f"p_real={self.p_believes_real:.3f}, "
+            f"p_real={self.mu_a:.3f}, "
             f"belief={self.belief_target.value}, "
             f"obs={self.total_observations})"
         )
@@ -160,7 +163,7 @@ class DeceptionEffectiveness:
     """
     drone_id               : str
     total_attackers        : int   = 0
-    avg_p_believes_real    : float = 0.0   # 전체 공격자 평균 P(real)
+    avg_mu_a    : float = 0.0   # 전체 공격자 평균 P(real)
     breadcrumb_hit_rate    : float = 0.0   # breadcrumb 접근/사용 비율
     ghost_engagement_rate  : float = 0.0   # ghost 서비스 상호작용 비율
     avg_dwell_time_sec     : float = 0.0   # 평균 체류 시간
@@ -170,7 +173,7 @@ class DeceptionEffectiveness:
         return (
             f"DeceptionEffectiveness(drone={self.drone_id}, "
             f"attackers={self.total_attackers}, "
-            f"avg_belief={self.avg_p_believes_real:.3f}, "
+            f"avg_belief={self.avg_mu_a:.3f}, "
             f"bc_hit={self.breadcrumb_hit_rate:.2f}, "
             f"detected={self.honeypot_detected_rate:.2f})"
         )
@@ -235,7 +238,7 @@ class DeceptionStateManager:
                 "breadcrumb accessed — belief updated",
                 attacker_ip=attacker_ip,
                 breadcrumb_id=breadcrumb_id[:8],
-                p_real=round(state.p_believes_real, 3),
+                p_real=round(state.mu_a, 3),
             )
             return state
 
@@ -258,7 +261,7 @@ class DeceptionStateManager:
                 "breadcrumb USED by attacker — strong deception signal",
                 attacker_ip=attacker_ip,
                 breadcrumb_id=breadcrumb_id[:8],
-                p_real=round(state.p_believes_real, 3),
+                p_real=round(state.mu_a, 3),
             )
             return state
 
@@ -309,7 +312,7 @@ class DeceptionStateManager:
             logger.warning(
                 "evasion behavior detected — attacker may suspect honeypot",
                 attacker_ip=attacker_ip,
-                p_real=round(state.p_believes_real, 3),
+                p_real=round(state.mu_a, 3),
             )
             return state
 
@@ -341,7 +344,7 @@ class DeceptionStateManager:
                공격자가 가짜라고 의심할수록 urgency 상승.
 
         [DATA FLOW]
-            AttackerBeliefState.p_believes_real
+            AttackerBeliefState.mu_a
             ──▶ urgency_modifier float [0.0, 1.0]
             ──▶ DeceptionOrchestrator → MTD urgency 보정
 
@@ -354,7 +357,7 @@ class DeceptionStateManager:
         if not state:
             return 0.0
 
-        p = state.p_believes_real
+        p = state.mu_a
         if p >= 0.7:
             return 0.0
         if p <= 0.3:
@@ -375,7 +378,7 @@ class DeceptionStateManager:
             return DeceptionEffectiveness(drone_id=self._drone_id)
 
         n = len(states)
-        avg_p = sum(s.p_believes_real for s in states) / n
+        avg_p = sum(s.mu_a for s in states) / n
         avg_dwell = sum(s.dwell_time_sec for s in states) / n
 
         bc_seen_total = sum(s.breadcrumbs_seen for s in states)
@@ -386,7 +389,7 @@ class DeceptionStateManager:
         return DeceptionEffectiveness(
             drone_id=self._drone_id,
             total_attackers=n,
-            avg_p_believes_real=avg_p,
+            avg_mu_a=avg_p,
             breadcrumb_hit_rate=bc_used_total / max(bc_seen_total, 1),
             ghost_engagement_rate=ghost_total / max(n, 1),
             avg_dwell_time_sec=avg_dwell,
@@ -411,7 +414,7 @@ class DeceptionStateManager:
                P(real | obs) = P(obs|real) · P(real) / P(obs)
 
         [수식]
-            prior = state.p_believes_real
+            prior = state.mu_a
             lr    = _LIKELIHOOD_RATIOS[obs_type]
 
             P(obs|real) ∝ lr
@@ -420,10 +423,10 @@ class DeceptionStateManager:
             posterior = (lr · prior) / (lr · prior + 1.0 · (1 - prior))
 
         [DATA FLOW]
-            prior + likelihood_ratio ──▶ posterior ──▶ state.p_believes_real
+            prior + likelihood_ratio ──▶ posterior ──▶ state.mu_a
         """
         lr = _LIKELIHOOD_RATIOS.get(obs_type, 1.0)
-        prior = state.p_believes_real
+        prior = state.mu_a
 
         # 수치 안정성: prior를 [0.01, 0.99]로 클램프
         prior = max(0.01, min(0.99, prior))
@@ -432,6 +435,6 @@ class DeceptionStateManager:
         denominator = numerator + 1.0 * (1.0 - prior)
         posterior   = numerator / denominator
 
-        state.p_believes_real = posterior
+        state.mu_a = posterior
         state.total_observations += 1
         state.last_update_ns = time.time_ns()

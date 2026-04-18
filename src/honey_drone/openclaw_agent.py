@@ -195,7 +195,7 @@ class OpenClawAgent:
             model_dir=_model_dir,
             policy_mode=_policy_mode,
         )
-        self._pre_action_p_real: float = 0.7  # actual Bayesian belief BEFORE action
+        self._pre_action_mu: float = 0.7  # actual Bayesian belief BEFORE action
         self._pre_action_packets: int = 0      # packet count BEFORE action
         self._last_action_idx: int = -1
         self._last_action_context: dict = {}
@@ -414,7 +414,7 @@ class OpenClawAgent:
         # honeypot_detected from belief state
         if self._belief_mgr_ref:
             belief = self._belief_mgr_ref.get_belief(ip)
-            if belief and belief.p_believes_real < 0.3:
+            if belief and belief.mu_a < 0.3:
                 sdm.honeypot_detected = True
 
         return result
@@ -503,7 +503,7 @@ class OpenClawAgent:
                 action_idx, action_name, debug = self._behavior_learner.select_action(context)
 
                 # ── Record pre-action state for causal reward ──
-                self._pre_action_p_real = self._get_real_p_real()
+                self._pre_action_mu = self._get_real_mu_a()
                 self._pre_action_packets = self._get_real_packet_count()
                 self._last_action_idx = action_idx
                 self._last_action_context = context
@@ -597,7 +597,7 @@ class OpenClawAgent:
             evasion_signals = sum(b.evasion_events for b in beliefs)
 
         # Real P(real) from DeceptionStateManager
-        avg_p_real = self._get_real_p_real()
+        avg_p_real = self._get_real_mu_a()
 
         return {
             "max_level": max_level,
@@ -612,7 +612,7 @@ class OpenClawAgent:
             "phase_val": phase_val,
         }
 
-    def _get_real_p_real(self) -> float:
+    def _get_real_mu_a(self) -> float:
         """
         Get ACTUAL P(real|observations) from DeceptionStateManager.
         This is the real Bayesian belief, not a proxy.
@@ -622,7 +622,7 @@ class OpenClawAgent:
         beliefs = self._belief_mgr_ref.get_all_beliefs()
         if not beliefs:
             return 0.7  # prior
-        return sum(b.p_believes_real for b in beliefs) / len(beliefs)
+        return sum(b.mu_a for b in beliefs) / len(beliefs)
 
     def _get_real_packet_count(self) -> int:
         """
@@ -655,8 +655,8 @@ class OpenClawAgent:
         [REF] Eq.H1-H4 HoneyGPT (USENIX 2025)
         """
         # Component 1: Bayesian belief change (from DeceptionStateManager)
-        post_p_real = self._get_real_p_real()
-        delta_belief = post_p_real - self._pre_action_p_real
+        post_p_real = self._get_real_mu_a()
+        delta_belief = post_p_real - self._pre_action_mu
         # Map [-0.2, +0.2] → [0, 1]. Center at 0.5 (no change = neutral reward)
         r_belief = max(0.0, min(1.0, (delta_belief + 0.2) / 0.4))
 
@@ -678,7 +678,7 @@ class OpenClawAgent:
         logger.info(
             "mab_reward_computed",
             drone_id=self._config.drone_id,
-            p_real_before=round(self._pre_action_p_real, 4),
+            p_real_before=round(self._pre_action_mu, 4),
             p_real_after=round(post_p_real, 4),
             delta_belief=round(delta_belief, 4),
             packets_before=self._pre_action_packets,

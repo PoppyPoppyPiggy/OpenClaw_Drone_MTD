@@ -212,7 +212,7 @@ class AgenticDecoyEngine:
         beliefs = self._belief_mgr.get_all_beliefs()
         if not beliefs:
             return 0.0  # 관측 없음 — 기만 성공과 구별
-        return sum(b.p_believes_real for b in beliefs) / len(beliefs)
+        return sum(b.mu_a for b in beliefs) / len(beliefs)
 
     def get_belief_states(self) -> list:
         """
@@ -224,7 +224,7 @@ class AgenticDecoyEngine:
         return [
             {
                 "attacker_ip": b.attacker_ip,
-                "p_believes_real": round(b.p_believes_real, 4),
+                "p_believes_real": round(b.mu_a, 4),
                 "total_observations": b.total_observations,
                 "breadcrumbs_seen": b.breadcrumbs_seen,
                 "ghost_interactions": b.ghost_interactions,
@@ -389,7 +389,7 @@ class AgenticDecoyEngine:
             phase=fp.attack_phase.value if fp else "recon",
             response_source=response_source,
             response_len=len(response_bytes) if response_bytes else 0,
-            p_real=round(belief_state.p_believes_real, 4) if belief_state else 0,
+            p_real=round(belief_state.mu_a, 4) if belief_state else 0,
             dwell_sec=round(metrics.dwell_time_sec, 2),
             cmds=metrics.commands_issued,
             level=metrics.attacker_level.name,

@@ -100,7 +100,7 @@ class GameState:
     # Attack progression
     phase: int = 0              # 0=RECON, 1=EXPLOIT, 2=PERSIST, 3=EXFIL
     level: int = 0              # attacker sophistication 0-4
-    p_real: float = 0.7         # Bayesian belief P(real drone | obs)
+    mu_a: float = 0.7           # Attacker's posterior belief μ_A(θ|m) [Pawlick & Zhu 2021 Eq.10]
     dwell_sec: float = 0.0      # attacker session duration
     step_count: int = 0
 
@@ -277,8 +277,8 @@ class MarkovGameEnv:
             check_power = detectability * (0.5 + 0.1 * s.honeypot_checks)
             # Bayesian update with suspicion LR
             lr_check = max(0.2, 1.0 - check_power)
-            prior = max(0.01, min(0.99, s.p_real))
-            s.p_real = (lr_check * prior) / (lr_check * prior + 1.0 * (1 - prior))
+            prior = max(0.01, min(0.99, s.mu_a))
+            s.mu_a = (lr_check * prior) / (lr_check * prior + 1.0 * (1 - prior))
             # But verification costs time and generates evasion signal
         else:
             # Skills 0-3: recon, exploit, use_credential, probe_ghost
@@ -325,19 +325,19 @@ class MarkovGameEnv:
                 lr = 1.0 + def_belief_delta * 8
             else:
                 lr = max(0.1, 1.0 + def_belief_delta * 8)
-            prior = max(0.01, min(0.99, s.p_real))
-            s.p_real = (lr * prior) / (lr * prior + 1.0 * (1 - prior))
+            prior = max(0.01, min(0.99, s.mu_a))
+            s.mu_a = (lr * prior) / (lr * prior + 1.0 * (1 - prior))
 
         # ── 5. Evasion check (stochastic) ────────────────────────
         if not atk_disconnected:
             evasion_prob = self._atk_evasion_prob[phase, min(atk_action, 6)]
-            if s.p_real < 0.5:
+            if s.mu_a < 0.5:
                 evasion_prob *= 1.5
             if random.random() < evasion_prob:
                 s.evasion_signals += 1
                 # Bayesian evasion update (LR=0.3)
-                p = max(0.01, min(0.99, s.p_real))
-                s.p_real = (0.3 * p) / (0.3 * p + 1.0 * (1 - p))
+                p = max(0.01, min(0.99, s.mu_a))
+                s.mu_a = (0.3 * p) / (0.3 * p + 1.0 * (1 - p))
 
         # ── 6. Compute rewards ───────────────────────────────────
         r_def = self._compute_defender_reward(def_belief_delta, atk_engaged, s)
@@ -354,15 +354,17 @@ class MarkovGameEnv:
             dwell_ratio = min(s.dwell_sec / 600.0, 1.0)
             r_atk += s.intel_score * 0.3 - 2.0 * (1.0 - dwell_ratio)
 
-        elif s.p_real < 0.2:
-            done = True
-            r_def -= 5.0    # defender: deception failed
-            r_atk += 3.0    # attacker: detected honeypot
+        # NOTE: mu_a < 0.2 hard termination REMOVED (Signaling Game redesign).
+        # Deception failure is determined by attacker's STRATEGIC CHOICE
+        # to disconnect, not by an arbitrary threshold on μ_A.
+        # [REF] Pawlick & Zhu (2021), Game Theory for Cyber Deception, Eq.10
+        # mu_a still influences attacker observation → attacker learns when to leave.
 
         elif s.step_count >= self.max_steps:
             done = True
             # Defender: maximum dwell = maximum deception success
-            r_def += 3.0 + s.p_real * 2.0
+            # Bonus based on engagement depth, not raw mu_a
+            r_def += 3.0 + min(s.phase / 3.0, 1.0) * 2.0
             # Attacker: only keeps intel, wasted time
             r_atk += s.intel_score * 0.3 - 1.0
 
@@ -372,7 +374,7 @@ class MarkovGameEnv:
             r_atk -= 1.0    # attacker also loses (indecisive)
 
         info = {
-            "p_real": round(s.p_real, 4),
+            "mu_a": round(s.mu_a, 4),
             "phase": s.phase,
             "level": s.level,
             "intel": round(s.intel_score, 2),
@@ -394,22 +396,37 @@ class MarkovGameEnv:
     # ── Reward Functions ─────────────────────────────────────────────────────
 
     def _compute_defender_reward(
-        self, delta_p: float, engaged: bool, s: GameState,
+        self, delta_mu: float, engaged: bool, s: GameState,
     ) -> float:
         """
-        Defender reward: maximize deception effectiveness.
+        Defender reward: Signaling Game Payoff (Pawlick & Zhu 2021 Eq.3).
 
-        r_def = 0.35 * Δp_real + 0.25 * engaged + 0.25 * dwell + 0.15 * safety
+        U_D = f·α·I(attack honeypot) - β (operating cost)
+        MIRAGE-UAS mapping: real drone absent → g·α term = 0
 
-        [REF] MIRAGE-UAS Eq.19 DES components
+        r_def = 0.30 * dwell_contribution    (Sojourn — Eq.06)
+              + 0.25 * engagement_quality    (MID/CRR — Eq.03-04)
+              + 0.25 * intel_signal          (CTI yield — Eq.09)
+              + 0.20 * safety_bonus          (no evasion — Eq.05 cloaking)
+
+        [REF] Pawlick & Zhu (2021), Game Theory for Cyber Deception, Eq.3
+        [REF] Ferguson-Walter et al. (2020), Honeypot MOE Taxonomy, arXiv:2005.12969
         """
-        r_belief = max(-1.0, min(1.0, delta_p * 8))
+        # Dwell contribution: attacker staying = defender winning
+        r_dwell = 0.3  # per-step survival bonus
+
+        # Engagement quality: attacker interacting deeply
         r_engage = 1.0 if engaged else 0.0
-        r_dwell = 0.3
+
+        # Intel signal: phase progression generates CTI
+        r_intel = min(s.phase / 3.0, 1.0) * 0.5 + min(s.intel_score / 5.0, 1.0) * 0.5
+
+        # Safety: no evasion signals = cloaking success
         r_safety = 0.0
         if s.evasion_signals > 0:
             r_safety = -0.3 * min(s.evasion_signals / 3.0, 1.0)
-        return 0.35 * r_belief + 0.25 * r_engage + 0.25 * r_dwell + 0.15 * r_safety
+
+        return 0.30 * r_dwell + 0.25 * r_engage + 0.25 * r_intel + 0.20 * r_safety
 
     def _compute_attacker_reward(
         self, intel_gained: float, engaged: bool, s: GameState,
@@ -449,7 +466,7 @@ class MarkovGameEnv:
         return np.array([
             s.phase / 3.0,
             min(s.level / 4.0, 1.0),
-            s.p_real,
+            s.mu_a,
             min(s.dwell_sec / 600.0, 1.0),
             min((s.services_found + s.exploit_attempts) / 100.0, 1.0),
             min(s.services_found / 10.0, 1.0),
@@ -468,7 +485,7 @@ class MarkovGameEnv:
         s = self.state
         # Response quality: proxy for how "real" the drone appears
         # Higher p_real → defender is doing well → responses feel real
-        response_quality = 0.5 + 0.3 * (s.p_real - 0.5) + random.gauss(0, 0.05)
+        response_quality = 0.5 + 0.3 * (s.mu_a - 0.5) + random.gauss(0, 0.05)
         response_quality = max(0.0, min(1.0, response_quality))
 
         # Timing consistency: reboot/silence makes timing inconsistent
@@ -482,7 +499,7 @@ class MarkovGameEnv:
         exploit_rate = 0.0
         if s.exploit_attempts > 0:
             # Higher p_real → more "successful" responses
-            exploit_rate = min(1.0, 0.3 + 0.5 * s.p_real)
+            exploit_rate = min(1.0, 0.3 + 0.5 * s.mu_a)
 
         return np.array([
             s.phase / 3.0,
@@ -507,7 +524,7 @@ class VecMarkovGameEnv:
     """
 
     # Internal state columns
-    _PH, _LV, _PR, _DW, _SF, _CG, _GV, _IS = range(8)
+    _PH, _LV, _MU, _DW, _SF, _CG, _GV, _IS = range(8)
     _EA, _EV, _HC, _GA, _CP, _SS, _TP, _SC = range(8, 16)
     _LDA, _LTA = 16, 17  # last defender/attacker action
     _N_STATE = 18
@@ -534,7 +551,7 @@ class VecMarkovGameEnv:
         N = self.n_envs
         self._raw[:] = 0.0
         self._raw[:, self._LV] = self._rng.integers(0, 3, size=N).astype(np.float32)
-        self._raw[:, self._PR] = (0.7 + self._rng.normal(0, 0.05, size=N)).astype(np.float32)
+        self._raw[:, self._MU] = (0.7 + self._rng.normal(0, 0.05, size=N)).astype(np.float32)
         self._raw[:, self._LDA] = -1.0
         self._raw[:, self._LTA] = -1.0
         return self._observe_defender(), self._observe_attacker()
@@ -545,7 +562,7 @@ class VecMarkovGameEnv:
             return
         self._raw[mask] = 0.0
         self._raw[mask, self._LV] = self._rng.integers(0, 3, size=n).astype(np.float32)
-        self._raw[mask, self._PR] = (0.7 + self._rng.normal(0, 0.05, size=n)).astype(np.float32)
+        self._raw[mask, self._MU] = (0.7 + self._rng.normal(0, 0.05, size=n)).astype(np.float32)
         self._raw[mask, self._LDA] = -1.0
         self._raw[mask, self._LTA] = -1.0
 
@@ -644,11 +661,11 @@ class VecMarkovGameEnv:
         raw[:, self._HC] += atk_verify.astype(np.float32)
         check_power = detectability * (0.5 + 0.1 * raw[:, self._HC])
         lr_check = np.maximum(0.2, 1.0 - check_power)
-        p_prior = np.clip(raw[:, self._PR], 0.01, 0.99)
-        raw[:, self._PR] = np.where(
+        p_prior = np.clip(raw[:, self._MU], 0.01, 0.99)
+        raw[:, self._MU] = np.where(
             atk_verify,
             (lr_check * p_prior) / (lr_check * p_prior + 1.0 * (1 - p_prior)),
-            raw[:, self._PR],
+            raw[:, self._MU],
         )
 
         # Lateral pivot: reset phase, keep intel fraction
@@ -666,19 +683,19 @@ class VecMarkovGameEnv:
         apply_mask = ~atk_disconnect & (def_belief != 0)
         lr_def = np.where(def_belief > 0, 1.0 + def_belief * 8,
                           np.maximum(0.1, 1.0 + def_belief * 8))
-        p = np.clip(raw[:, self._PR], 0.01, 0.99)
+        p = np.clip(raw[:, self._MU], 0.01, 0.99)
         updated_p = (lr_def * p) / (lr_def * p + 1.0 * (1 - p))
-        raw[:, self._PR] = np.where(apply_mask, updated_p, raw[:, self._PR])
+        raw[:, self._MU] = np.where(apply_mask, updated_p, raw[:, self._MU])
 
         # ── Evasion check ──
         evasion_prob = self._atk_evasion_prob[phase, np.minimum(atk_actions, 6)]
-        evasion_prob = np.where(raw[:, self._PR] < 0.5, evasion_prob * 1.5, evasion_prob)
+        evasion_prob = np.where(raw[:, self._MU] < 0.5, evasion_prob * 1.5, evasion_prob)
         evasion_prob = np.minimum(evasion_prob, 0.5)
         evasion_hit = (rng.random(N) < evasion_prob) & ~atk_disconnect
         raw[:, self._EV] += evasion_hit.astype(np.float32)
-        p = np.clip(raw[:, self._PR], 0.01, 0.99)
-        raw[:, self._PR] = np.where(
-            evasion_hit, (0.3 * p) / (0.3 * p + 1.0 * (1 - p)), raw[:, self._PR],
+        p = np.clip(raw[:, self._MU], 0.01, 0.99)
+        raw[:, self._MU] = np.where(
+            evasion_hit, (0.3 * p) / (0.3 * p + 1.0 * (1 - p)), raw[:, self._MU],
         )
 
         # ── Phase advancement ──
@@ -689,17 +706,17 @@ class VecMarkovGameEnv:
         level_up = phase_adv & (raw[:, self._LV] < 4) & (rng.random(N) < 0.3)
         raw[:, self._LV] += level_up.astype(np.float32)
 
-        # ── Rewards ──
+        # ── Rewards (Signaling Game Payoff — Pawlick & Zhu 2021 Eq.3) ──
         # Defender
-        r_belief_d = np.clip(def_belief * 8, -1.0, 1.0)
-        r_engage_d = atk_engage_mask.astype(np.float32)
         r_dwell_d = np.full(N, 0.3, dtype=np.float32)
+        r_engage_d = atk_engage_mask.astype(np.float32)
+        r_intel_d = np.minimum(raw[:, self._PH] / 3.0, 1.0) * 0.5 + np.minimum(raw[:, self._IS] / 5.0, 1.0) * 0.5
         r_safety_d = np.where(
             raw[:, self._EV] > 0,
             -0.3 * np.minimum(raw[:, self._EV] / 3.0, 1.0),
             0.0,
         )
-        r_def = 0.35 * r_belief_d + 0.25 * r_engage_d + 0.25 * r_dwell_d + 0.15 * r_safety_d
+        r_def = 0.30 * r_dwell_d + 0.25 * r_engage_d + 0.25 * r_intel_d + 0.20 * r_safety_d
 
         # Attacker
         r_intel_a = np.minimum(atk_intel * 2.0, 1.0)
@@ -716,35 +733,36 @@ class VecMarkovGameEnv:
         r_atk = 0.30 * r_intel_a + 0.25 * r_progress_a + 0.25 * r_eff_a + 0.20 * r_risk_a
 
         # ── Terminal ──
+        # NOTE: mu_a < 0.2 hard termination REMOVED (Signaling Game redesign).
+        # Termination by attacker disconnect, timeout, or excessive evasion only.
+        # [REF] Pawlick & Zhu (2021) — termination is player action, not threshold.
         done_disconnect = atk_disconnect
-        done_preal = raw[:, self._PR] < 0.2
         done_steps = raw[:, self._SC] >= self.max_steps
         done_evasion = raw[:, self._EV] >= 5
 
         # Terminal rewards
         dwell_ratio = np.minimum(raw[:, self._DW] / 600.0, 1.0)
+        phase_depth = np.minimum(raw[:, self._PH] / 3.0, 1.0)
+
         r_def = np.where(done_disconnect,
                          r_def + np.minimum(raw[:, self._DW] / 300.0, 2.0) + 1.0, r_def)
         r_atk = np.where(done_disconnect,
                          r_atk + raw[:, self._IS] * 0.3 - 2.0 * (1.0 - dwell_ratio), r_atk)
 
-        r_def = np.where(done_preal & ~done_disconnect, r_def - 5.0, r_def)
-        r_atk = np.where(done_preal & ~done_disconnect, r_atk + 3.0, r_atk)
-
-        r_def = np.where(done_steps & ~done_preal & ~done_disconnect,
-                         r_def + 3.0 + raw[:, self._PR] * 2.0, r_def)
-        r_atk = np.where(done_steps & ~done_preal & ~done_disconnect,
+        r_def = np.where(done_steps & ~done_disconnect,
+                         r_def + 3.0 + phase_depth * 2.0, r_def)
+        r_atk = np.where(done_steps & ~done_disconnect,
                          r_atk + raw[:, self._IS] * 0.3 - 1.0, r_atk)
 
-        r_def = np.where(done_evasion & ~done_preal & ~done_steps & ~done_disconnect,
+        r_def = np.where(done_evasion & ~done_steps & ~done_disconnect,
                          r_def - 2.0, r_def)
-        r_atk = np.where(done_evasion & ~done_preal & ~done_steps & ~done_disconnect,
+        r_atk = np.where(done_evasion & ~done_steps & ~done_disconnect,
                          r_atk - 1.0, r_atk)
 
-        dones = done_disconnect | done_preal | done_steps | done_evasion
+        dones = done_disconnect | done_steps | done_evasion
 
         info = {
-            "p_real": raw[:, self._PR].copy(),
+            "mu_a": raw[:, self._MU].copy(),
             "intel": raw[:, self._IS].copy(),
             "dones": dones.copy(),
         }
@@ -764,7 +782,7 @@ class VecMarkovGameEnv:
         obs = np.zeros((N, DEFENDER_OBS_DIM), dtype=np.float32)
         obs[:, 0] = raw[:, self._PH] / 3.0
         obs[:, 1] = np.minimum(raw[:, self._LV] / 4.0, 1.0)
-        obs[:, 2] = raw[:, self._PR]
+        obs[:, 2] = raw[:, self._MU]
         obs[:, 3] = np.minimum(raw[:, self._DW] / 600.0, 1.0)
         obs[:, 4] = np.minimum((raw[:, self._SF] + raw[:, self._EA]) / 100.0, 1.0)
         obs[:, 5] = np.minimum(raw[:, self._SF] / 10.0, 1.0)
@@ -785,13 +803,13 @@ class VecMarkovGameEnv:
         obs[:, 3] = np.minimum(raw[:, self._CG] / 5.0, 1.0)
         obs[:, 4] = np.minimum(raw[:, self._GV] / 5.0, 1.0)
         # Response quality: noisy proxy for p_real
-        quality = 0.5 + 0.3 * (raw[:, self._PR] - 0.5) + self._rng.normal(0, 0.05, N).astype(np.float32)
+        quality = 0.5 + 0.3 * (raw[:, self._MU] - 0.5) + self._rng.normal(0, 0.05, N).astype(np.float32)
         obs[:, 5] = np.clip(quality, 0.0, 1.0)
         # Timing consistency
         obs[:, 6] = np.where(raw[:, self._SS] > 0, 0.3, 1.0)
         # Exploit success rate
         ea = raw[:, self._EA]
-        obs[:, 7] = np.where(ea > 0, np.minimum(1.0, 0.3 + 0.5 * raw[:, self._PR]), 0.0)
+        obs[:, 7] = np.where(ea > 0, np.minimum(1.0, 0.3 + 0.5 * raw[:, self._MU]), 0.0)
         # Last defender action (observable)
         lda = np.clip(raw[:, self._LDA], 0, 4)
         obs[:, 8] = lda / 4.0
