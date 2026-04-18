@@ -111,9 +111,20 @@ def train(
     target_update: int = 5,
     target_reward: float = 35.0,
     patience: int = 300,
+    seed: int = 42,
+    eval_episodes: int = 100,
+    eval_seed: int = 1337,
 ):
+    # Deterministic training: seed torch, numpy, and python's random
+    import random as _rnd
+    _rnd.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"\n  Device: {device}")
+    print(f"\n  Device: {device}  seed={seed}  eval_seed={eval_seed}")
     if device.type == "cuda":
         print(f"  GPU: {torch.cuda.get_device_name(0)}")
         try:
@@ -332,10 +343,16 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=3000)
-    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=256,
+                        help="Larger batch leverages GPU (RTX 5090 handles 512+)")
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--target-reward", type=float, default=35.0)
     parser.add_argument("--patience", type=int, default=300)
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Deterministic training seed")
+    parser.add_argument("--eval-episodes", type=int, default=100)
+    parser.add_argument("--eval-seed", type=int, default=1337,
+                        help="Held-out seed for final evaluation")
     args = parser.parse_args()
 
     print("╔═══════════════════════════════════════════════════╗")
@@ -354,4 +371,7 @@ if __name__ == "__main__":
         lr=args.lr,
         target_reward=args.target_reward,
         patience=args.patience,
+        seed=args.seed,
+        eval_episodes=args.eval_episodes,
+        eval_seed=args.eval_seed,
     )
