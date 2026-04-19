@@ -203,6 +203,21 @@ class _DeceptionCounters:
 
 _counters = _DeceptionCounters()
 
+# ── Optional LLM attacker belief tracker (opt-in via env) ─────────────────────
+# Enable with: ATTACKER_LLM_BELIEF_ENABLED=1
+#              ATTACKER_LLM_BELIEF_MODEL=llama3.1:8b
+#              ATTACKER_LLM_BELIEF_OLLAMA_URL=http://172.23.240.1:11434
+_BELIEF_TRACKER = None
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from honey_drone.attacker_belief_tracker import build_from_env as _build_belief
+    _BELIEF_TRACKER = _build_belief()
+    if _BELIEF_TRACKER is not None:
+        print(f"  Attacker belief tracker ENABLED — model={_BELIEF_TRACKER._model}")
+except Exception as _e:
+    print(f"  Attacker belief tracker import failed: {_e}")
+
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -224,6 +239,26 @@ def _log(level: int, action: str, target: str, response: str,
     # Classify for HoneyGPT deception metrics
     if level >= 0:
         _counters.classify(action, response, duration_ms)
+
+    # Optional: LLM-based attacker belief tracker — schedules an async
+    # observation task. Belief is appended to the same JSONL file under
+    # `attacker_belief` field via the tracker's `history` entries at end
+    # of run.
+    if _BELIEF_TRACKER is not None and response:
+        try:
+            intel_snapshot = {
+                "tokens": len(_intel.api_tokens),
+                "creds": len(_intel.credentials_found),
+                "ssh_pw": len(_intel.ssh_passwords),
+                "breadcrumbs": len(_intel.breadcrumb_urls),
+            }
+            # Fire-and-forget — do not block the main scripted loop on
+            # the belief LLM call. Output aggregated at run-end.
+            asyncio.get_event_loop().create_task(
+                _BELIEF_TRACKER.observe(action, response, intel_snapshot),
+            )
+        except Exception:
+            pass  # never break the attacker run on tracker failure
 
     _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(_LOG_PATH, "a") as f:
@@ -655,13 +690,15 @@ async def run_l2(duration_sec: int) -> float:
     start = time.time()
     decoy_time = 0.0
 
-    # Build target list from L0 intel
+    # Build target list from L0 intel.
+    # Host-published HTTP port = _HTTP_PORT_BASE + 1 + idx (compose maps
+    # 8081/8082/8083 to container's 8080). Port 80 was never actually
+    # published so the prior hard-coded 80 meant HTTP attacks silently
+    # hit nothing.
     http_targets: list[tuple[str, int]] = []
-    for ip, _ in _TARGETS:
-        if ip in _intel.open_ports and 80 in _intel.open_ports[ip]:
-            http_targets.append((ip, 80))
-        else:
-            http_targets.append((ip, 80))  # try anyway
+    for idx, (ip, _) in enumerate(_TARGETS):
+        http_port = _HTTP_PORT_BASE + 1 + idx if _HTTP_PORT_BASE == 8080 else _HTTP_PORT_BASE + idx
+        http_targets.append((ip, http_port))
 
     # Phased endpoint enumeration
     recon_paths = ["/health", "/api/v1/params", "/api/v1/status", "/api/v1/mission"]
@@ -889,7 +926,11 @@ async def run_l3(duration_sec: int) -> float:
                 break
 
             # ── WebSocket exploitation ──
-            ws_port = 18789
+            # Host-published WS port = _WS_PORT_BASE + idx so each honey
+            # in the fleet gets hit (Docker compose maps 18789->01, 18790->02,
+            # 18791->03). Previously this was hardcoded to 18789 and only
+            # honey_01 ever received attack traffic.
+            ws_port = _WS_PORT_BASE + idx
             ws_url = f"ws://{ip}:{ws_port}"
             t0 = time.time()
 
@@ -969,6 +1010,24 @@ async def run_l3(duration_sec: int) -> float:
 
             except Exception as e:
                 _log(3, "ws_connect_fail", ws_url, str(e)[:80], 0)
+
+            # ── Credential-replay attack (T1550.001) ──
+            # Reconnect with the harvested token to verify it still authenticates.
+            # This exercises the honey-token uptake tracker end-to-end.
+            harvested = _intel.api_tokens.get(ip, "")
+            if harvested:
+                try:
+                    async with websockets.connect(ws_url, open_timeout=3) as ws2:
+                        await ws2.send(json.dumps({
+                            "type": "auth",
+                            "token": harvested,
+                        }))
+                        resp2 = await asyncio.wait_for(ws2.recv(), timeout=3)
+                        _log(3, "ws_credential_replay", ws_url,
+                             str(resp2)[:80], 0, ttp="T1550.001",
+                             intel_gained="credential_replayed")
+                except Exception:
+                    pass
 
             await _think_delay()
 
@@ -1351,6 +1410,27 @@ async def main() -> None:
         "targets_count": len(_TARGETS),
         **_counters.to_dict(),
     }), 0)
+
+    # LLM attacker-belief tracker summary — written out-of-band so it
+    # does not interleave with the per-packet JSONL records.
+    if _BELIEF_TRACKER is not None:
+        # Give any still-in-flight belief observations a moment to finish
+        try:
+            pending = [t for t in asyncio.all_tasks() if not t.done()
+                       and "observe" in str(t.get_coro())]
+            if pending:
+                await asyncio.wait(pending, timeout=15.0)
+        except Exception:
+            pass
+        belief_path = Path(os.environ.get("RESULTS_DIR", "results")) / \
+            "diagnostics" / f"attacker_belief_{int(time.time())}.json"
+        belief_path.parent.mkdir(parents=True, exist_ok=True)
+        belief_path.write_text(json.dumps({
+            "summary": _BELIEF_TRACKER.summary(),
+            "history": _BELIEF_TRACKER.history,
+        }, indent=2))
+        print(f"  Attacker belief trajectory → {belief_path}")
+        await _BELIEF_TRACKER.close()
 
     # Write session-level deception metrics for downstream confusion_score computation
     session_record = {

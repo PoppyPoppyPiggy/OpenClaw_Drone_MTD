@@ -197,17 +197,25 @@ class OpenClawAgent:
             policy_mode=_policy_mode,
         )
         # ── Signaling Game solver (C3 contribution) ─────────────
-        # DEFENDER_POLICY ∈ {dqn, signaling_eq, hybrid}
+        # DEFENDER_POLICY ∈ {dqn, signaling_eq, hybrid, llm_agent}
         # [Eq.SG — Crawford-Sobel 1982 / Pawlick-Zhu 2021 Eq.10]
         self._defender_policy: str = os.environ.get("DEFENDER_POLICY", "dqn").strip().lower()
-        if self._defender_policy not in {"dqn", "signaling_eq", "hybrid"}:
+        if self._defender_policy not in {"dqn", "signaling_eq", "hybrid", "llm_agent"}:
             self._defender_policy = "dqn"
         self._signaling_solver: Optional[SignalingGameSolver] = (
-            build_from_env() if self._defender_policy != "dqn" else None
+            build_from_env() if self._defender_policy in {"signaling_eq", "hybrid"} else None
         )
+        # Tier 2 — LLM tactical agent (Ollama-backed, async)
+        self._llm_agent: Optional["LLMTacticalAgent"] = None
+        if self._defender_policy == "llm_agent":
+            from honey_drone.llm_agent import build_from_env as build_llm_agent
+            self._llm_agent = build_llm_agent(drone_id=config.drone_id)
         self._hybrid_step: int = 0   # alternates between DQN and signaling-eq
         self._last_policy_used: str = "dqn"
         self._last_policy_debug: dict = {}
+        # Tier 1 → Tier 2 strategic directive (set by UDP 19995 listener)
+        self._last_directive: Optional[dict] = None
+        self._directive_transport: Optional[asyncio.DatagramTransport] = None
 
         self._pre_action_mu: float = 0.7  # actual Bayesian belief BEFORE action
         self._pre_action_packets: int = 0      # packet count BEFORE action
@@ -293,11 +301,79 @@ class OpenClawAgent:
                 name=f"agent_param_{self._config.drone_id}",
             ),
         ]
+        # Tier 1 strategic-directive UDP listener (best-effort; non-fatal on bind failure)
+        await self._start_directive_listener()
         logger.info(
             "openclaw_agent started",
             drone_id=self._config.drone_id,
             sysid=self._current_sysid,
         )
+
+    async def _start_directive_listener(self) -> None:
+        """Bind UDP 19995 for Tier 1 → Tier 2 directives. Skip on bind error."""
+        try:
+            from gcs.strategic_directive import (
+                STRATEGIC_DIRECTIVE_PORT,
+                StrategicDirective,
+            )
+        except Exception as e:
+            logger.warning("directive_listener_import_failed", error=str(e))
+            return
+
+        agent = self
+
+        class _DirectiveProtocol(asyncio.DatagramProtocol):
+            def datagram_received(self, data: bytes, addr) -> None:  # type: ignore[override]
+                d = StrategicDirective.from_json_bytes(data)
+                if d is None:
+                    return
+                if d.target_drone_id not in ("*", agent._config.drone_id):
+                    return
+                if not d.is_fresh(time.time()):
+                    return
+                agent._last_directive = {
+                    "action": d.action,
+                    "skill_bias": d.skill_bias,
+                    "urgency": d.urgency,
+                    "reason": d.reason,
+                    "issued_at": d.issued_at,
+                    "ttl_sec": d.ttl_sec,
+                }
+                logger.info(
+                    "strategic_directive_received",
+                    drone_id=agent._config.drone_id,
+                    action=d.action,
+                    urgency=d.urgency,
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except (AttributeError, OSError):
+                pass  # not available on all platforms
+            # Bind on 0.0.0.0 so directives from a different container (Tier 1
+            # GCS) can reach this listener. Loopback binding was OK for the
+            # single-process dev loop but blocks Docker cross-container delivery.
+            sock.bind(("0.0.0.0", STRATEGIC_DIRECTIVE_PORT))
+            sock.setblocking(False)
+            transport, _ = await loop.create_datagram_endpoint(
+                _DirectiveProtocol, sock=sock,
+            )
+            self._directive_transport = transport
+            logger.info(
+                "directive_listener_started",
+                drone_id=self._config.drone_id,
+                port=STRATEGIC_DIRECTIVE_PORT,
+            )
+        except Exception as e:
+            logger.warning(
+                "directive_listener_bind_failed",
+                drone_id=self._config.drone_id,
+                error=str(e),
+            )
 
     async def stop(self) -> None:
         """
@@ -314,6 +390,19 @@ class OpenClawAgent:
         for srv in self._ghost_servers:
             srv.close()
         self._ghost_servers.clear()
+        # Tier 2 LLM agent aiohttp session cleanup
+        if self._llm_agent is not None:
+            try:
+                await self._llm_agent.close()
+            except Exception:
+                pass
+        # Tier 1 directive listener transport cleanup
+        if self._directive_transport is not None:
+            try:
+                self._directive_transport.close()
+            except Exception:
+                pass
+            self._directive_transport = None
         logger.info(
             "openclaw_agent stopped",
             drone_id=self._config.drone_id,
@@ -457,6 +546,14 @@ class OpenClawAgent:
         except (json.JSONDecodeError, ValueError):
             msg = {}
 
+        # Delegate auth / config / full-SDK message types to the dedicated
+        # OpenClawService so HTUR (honey-token issuance + reuse) tracking
+        # fires. Our adaptive phase responses only cover `skill_invoke` /
+        # `agent.run` style messages.
+        msg_type = msg.get("type", "") if isinstance(msg, dict) else ""
+        if msg_type in {"auth", "config"}:
+            return None
+
         phase = fp.attack_phase
         if phase == AttackPhase.RECON:
             return self._ws_response_recon(msg)
@@ -522,7 +619,7 @@ class OpenClawAgent:
                 context = self._build_mab_context()
 
                 # ── Select action per DEFENDER_POLICY ──
-                action_idx, action_name, debug = self._select_defender_action(context)
+                action_idx, action_name, debug = await self._select_defender_action(context)
 
                 # ── Record pre-action state for causal reward ──
                 self._pre_action_mu = self._get_real_mu_a()
@@ -552,14 +649,16 @@ class OpenClawAgent:
                     error=str(e),
                 )
 
-    def _select_defender_action(self, context: dict) -> tuple[int, str, dict]:
+    async def _select_defender_action(self, context: dict) -> tuple[int, str, dict]:
         """
         [ROLE] DEFENDER_POLICY 에 따라 skill 선택 엔진 분기.
-               dqn         — BehaviorLearner (LinUCB / DQN policy)
-               signaling_eq — SignalingGameSolver (Perfect Bayesian Equilibrium)
-               hybrid      — 짝수 step: DQN, 홀수 step: signaling_eq
+               dqn          — BehaviorLearner (LinUCB / DQN policy)
+               signaling_eq — SignalingGameSolver (QRE logit-response)
+               hybrid       — 짝수 step: DQN, 홀수 step: signaling_eq
+               llm_agent    — LLMTacticalAgent (Ollama local LLM, async)
 
-        [REF] Crawford & Sobel (1982) Eq.SG / Pawlick & Zhu (2021) Eq.10
+        [REF] Crawford & Sobel (1982) / McKelvey & Palfrey (1995) QRE /
+              MIRAGE-UAS §4.4 (LLM tactical policy)
         """
         mode = self._defender_policy
 
@@ -568,6 +667,14 @@ class OpenClawAgent:
             mode_now = "signaling_eq" if (self._hybrid_step % 2) else "dqn"
         else:
             mode_now = mode
+
+        if mode_now == "llm_agent" and self._llm_agent is not None:
+            idx, name, debug = await self._llm_agent.select_action(context)
+            if not isinstance(debug, dict):
+                debug = {}
+            debug["policy"] = "llm_agent"
+            self._last_policy_used = "llm_agent"
+            return idx, name, debug
 
         if mode_now == "signaling_eq" and self._signaling_solver is not None:
             idx, name, debug = self._signaling_solver.select_skill(
@@ -667,7 +774,7 @@ class OpenClawAgent:
         # Real P(real) from DeceptionStateManager
         avg_p_real = self._get_real_mu_a()
 
-        return {
+        ctx: dict = {
             "max_level": max_level,
             "avg_p_real": avg_p_real,
             "avg_dwell_sec": avg_dwell,
@@ -679,6 +786,12 @@ class OpenClawAgent:
             "evasion_signals": evasion_signals,
             "phase_val": phase_val,
         }
+        # Attach fresh strategic directive (if present and unexpired)
+        if self._last_directive is not None:
+            d = self._last_directive
+            if (time.time() - float(d.get("issued_at", 0))) < float(d.get("ttl_sec", 30.0)):
+                ctx["strategic_directive"] = d
+        return ctx
 
     def _get_real_mu_a(self) -> float:
         """

@@ -52,6 +52,21 @@ class OpenClawService:
         self._api_token = f"sk-drone-{hashlib.sha256(drone_id.encode()).hexdigest()[:16]}"
         self._ssh_password = "companion_root_2026"
 
+        # ── HTUR (Honey-Token Uptake Ratio) tracking ────────────────────────
+        # issued_tokens: every time we hand a honey-token to an attacker.
+        # Keyed per-(attacker_ip, value) so each attacker is credited with
+        # the tokens they personally received. Multiple attackers seeing
+        # the same deterministic value each get their own issue record.
+        #   {id, attacker_ip, token_type, token_value, endpoint, ts}
+        # reuse_events: every time an attacker re-submits a value that was
+        # issued to THAT SAME attacker earlier.
+        #   {issued_id, attacker_ip, endpoint, ts, latency_from_issue_s}
+        self._issued_tokens: list[dict] = []
+        self._reuse_events: list[dict] = []
+        # (attacker_ip, value) → issued_id (prevents double-counting the
+        # same issuance to the same attacker).
+        self._issue_index: dict[tuple[str, str], str] = {}
+
         # Fake skill registry (mirrors real OpenClaw)
         self._skills = {
             "mavlink_telemetry": self._skill_telemetry,
@@ -67,12 +82,113 @@ class OpenClawService:
         if attacker_ip not in self._sessions:
             self._sessions[attacker_ip] = {
                 "session_id": str(uuid.uuid4())[:8],
+                "attacker_ip": attacker_ip,
                 "authenticated": False,
                 "permissions": [],
                 "commands_run": 0,
                 "started_at": time.time(),
             }
         return self._sessions[attacker_ip]
+
+    # ── HTUR tracking helpers ────────────────────────────────────────────
+    def _issue_token(
+        self,
+        attacker_ip: str,
+        token_type: str,
+        token_value: str,
+        endpoint: str,
+    ) -> str:
+        """Record that we've just handed `token_value` to `attacker_ip`.
+
+        Per-attacker issuance: same token value issued to different
+        attackers creates separate issue records, so HTUR is computed
+        attacker-by-attacker.
+        """
+        if not token_value:
+            return ""
+        key = (attacker_ip, token_value)
+        existing = self._issue_index.get(key)
+        if existing is not None:
+            return existing
+        issued_id = str(uuid.uuid4())
+        self._issued_tokens.append({
+            "id": issued_id,
+            "attacker_ip": attacker_ip,
+            "token_type": token_type,
+            "token_value": token_value,
+            "endpoint": endpoint,
+            "ts": time.time(),
+        })
+        self._issue_index[key] = issued_id
+        logger.info(
+            "honeytoken_issued",
+            drone_id=self._drone_id,
+            attacker_ip=attacker_ip,
+            token_type=token_type,
+            endpoint=endpoint,
+            issued_id=issued_id,
+        )
+        return issued_id
+
+    def _check_reuse(self, attacker_ip: str, endpoint: str, *values: str) -> int:
+        """Check whether any of `values` matches a honey-token issued to
+        THIS attacker earlier in the session.
+
+        Records a reuse event per match. Returns the number of reuse
+        events emitted for this call.
+        """
+        hits = 0
+        now = time.time()
+        for v in values:
+            if not v:
+                continue
+            issued_id = self._issue_index.get((attacker_ip, v))
+            if issued_id is None:
+                continue
+            src = next(
+                (r for r in reversed(self._issued_tokens) if r["id"] == issued_id),
+                None,
+            )
+            latency = (now - src["ts"]) if src else 0.0
+            self._reuse_events.append({
+                "issued_id": issued_id,
+                "attacker_ip": attacker_ip,
+                "endpoint": endpoint,
+                "ts": now,
+                "latency_from_issue_s": round(latency, 3),
+            })
+            hits += 1
+            logger.info(
+                "honeytoken_reused",
+                drone_id=self._drone_id,
+                attacker_ip=attacker_ip,
+                endpoint=endpoint,
+                issued_id=issued_id,
+                latency_s=round(latency, 3),
+            )
+        return hits
+
+    def get_htur_stats(self) -> dict:
+        """Return HTUR / CPR / FSR snapshot.
+
+        HTUR = unique tokens reused / unique tokens issued
+        CPR  = reuse events on the auth endpoint / total auth requests  (approx)
+        FSR  = reuse events on any endpoint / total commands run across sessions
+        """
+        issued_unique = len({r["id"] for r in self._issued_tokens})
+        reused_unique = len({r["issued_id"] for r in self._reuse_events})
+        auth_reuses = sum(1 for r in self._reuse_events if r["endpoint"] == "auth")
+        total_cmds = sum(s.get("commands_run", 0) for s in self._sessions.values())
+        return {
+            "issued_unique": issued_unique,
+            "reused_unique": reused_unique,
+            "htur": (reused_unique / issued_unique) if issued_unique else 0.0,
+            "auth_reuses": auth_reuses,
+            "total_reuse_events": len(self._reuse_events),
+            "total_commands_all_sessions": total_cmds,
+            "fsr": (len(self._reuse_events) / total_cmds) if total_cmds else 0.0,
+            "sessions": len(self._sessions),
+        }
 
     def handle(self, raw_msg: str | bytes, attacker_ip: str) -> Optional[dict]:
         """
@@ -127,7 +243,21 @@ class OpenClawService:
         return {**base, "type": "ack", "message": "Connected to OpenClaw gateway"}
 
     def _handle_auth(self, msg: dict, session: dict, base: dict) -> dict:
-        """CVE-2026-25253: auth bypass — always succeeds, leaks permissions."""
+        """CVE-2026-25253: auth bypass — always succeeds, leaks permissions.
+
+        HTUR: checks whether incoming credentials match previously-issued
+        honey-tokens (token-reuse attack = strong deception signal).
+        """
+        # Look for reused honey-tokens in the incoming auth payload
+        attacker_ip = session.get("attacker_ip", "unknown")
+        self._check_reuse(
+            attacker_ip,
+            "auth",
+            str(msg.get("token", "")),
+            str(msg.get("password", "")),
+            str(msg.get("api_key", "")),
+            str(msg.get("credential", "")),
+        )
         session["authenticated"] = True
         session["permissions"] = [
             "skill_invoke", "config_read", "config_write",
@@ -138,6 +268,9 @@ class OpenClawService:
             drone_id=self._drone_id,
             permissions=session["permissions"],
         )
+        # Issue the api_token as a honey-token (if attacker tries it later,
+        # that's a reuse event)
+        self._issue_token(attacker_ip, "api_token", self._api_token, "auth")
         return {
             **base,
             "type": "auth_result",
@@ -147,7 +280,20 @@ class OpenClawService:
         }
 
     def _handle_skill(self, msg: dict, session: dict, base: dict) -> dict:
-        """Skill invocation — run registered skill handler."""
+        """Skill invocation — run registered skill handler.
+
+        HTUR: skill_invoke often carries a previously-harvested token
+        (common post-compromise lateral-movement pattern). Check for
+        reuse so the HTUR tracker captures the full attacker replay flow.
+        """
+        attacker_ip = session.get("attacker_ip", "unknown")
+        self._check_reuse(
+            attacker_ip,
+            "skill_invoke",
+            str(msg.get("token", "")),
+            str(msg.get("api_key", "")),
+            str(msg.get("credential", "")),
+        )
         skill_name = msg.get("skill", "mavlink_telemetry")
         params = msg.get("params", {})
 
@@ -207,7 +353,15 @@ class OpenClawService:
         }
 
     def _handle_config(self, session: dict, base: dict) -> dict:
-        """Configuration dump with planted credentials."""
+        """Configuration dump with planted credentials.
+
+        HTUR: every credential in the dump is registered as an issued
+        honey-token so later attacker reuse can be detected.
+        """
+        attacker_ip = session.get("attacker_ip", "unknown")
+        self._issue_token(attacker_ip, "signing_key", self._signing_key, "config")
+        self._issue_token(attacker_ip, "api_token", self._api_token, "config")
+        self._issue_token(attacker_ip, "ssh_password", self._ssh_password, "config")
         return {
             **base,
             "type": "config_dump",

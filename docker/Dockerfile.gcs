@@ -1,0 +1,39 @@
+# Dockerfile.gcs — MIRAGE-UAS Tier 1 GCS Strategic Agent
+#
+# [ROLE]  Runs src/gcs/strategic_agent.py as a long-lived service,
+#         periodically (GCS_INTERVAL_SEC) querying a host-served Ollama
+#         LLM and emitting strategic_directive on UDP 127.0.0.1:19995.
+#
+# [NOTES] "OpenClaw-inspired" — per MIRAGE-UAS GLOSSARY §13, we do NOT
+#         embed the upstream Node.js OpenClaw binary. The strategic
+#         agent is pure Python + httpx + aiohttp; LLM inference is
+#         delegated to the host-side Ollama (host.docker.internal).
+#
+# [BUILD]
+#   docker build -f docker/Dockerfile.gcs -t mirage-gcs:latest .
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir \
+    aiohttp httpx python-dotenv structlog
+
+# Non-root UID 1000 to match the rest of the stack
+RUN useradd -u 1000 -m -s /usr/sbin/nologin mirage
+
+# Copy only the source the GCS actually needs
+COPY --chown=mirage:mirage src/ /app/src/
+COPY --chown=mirage:mirage config/.env /app/config/.env
+
+RUN mkdir -p /results && chown -R mirage:mirage /app /results
+
+WORKDIR /app
+ENV PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1
+# Pin Python hash salt so dict/set/hash-based RNG seeds are reproducible
+# across container re-creations (paper §5 — Tier 1 directive test).
+ENV PYTHONHASHSEED=0
+
+USER mirage
+
+# Default entrypoint runs the strategic agent as a module. Override in
+# compose with `command: ...` when needed.
+CMD ["python3", "-u", "-m", "gcs.strategic_agent"]

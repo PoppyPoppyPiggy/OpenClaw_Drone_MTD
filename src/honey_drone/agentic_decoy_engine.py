@@ -886,7 +886,26 @@ class AgenticDecoyEngine:
                 }
 
                 payload = json.dumps(snapshot).encode("utf-8")
+                # Local (in-container) monitor / host-published port forward
                 self._broadcast_sock.sendto(payload, ("127.0.0.1", 19999))
+                # Optional cross-container fan-out to Tier 1 GCS.
+                # Set STATE_BROADCAST_EXTRA_TARGETS="gcs:19999" in compose to
+                # feed the strategic agent; silent if unset.
+                import os
+                extras = os.environ.get("STATE_BROADCAST_EXTRA_TARGETS", "").strip()
+                if extras:
+                    for t in extras.split(","):
+                        t = t.strip()
+                        if not t:
+                            continue
+                        try:
+                            host, _, port_s = t.rpartition(":")
+                            port = int(port_s) if port_s else 19999
+                            self._broadcast_sock.sendto(
+                                payload, (host or "127.0.0.1", port),
+                            )
+                        except Exception:
+                            pass  # fire-and-forget
 
             except asyncio.CancelledError:
                 break

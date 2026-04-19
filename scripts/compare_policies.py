@@ -643,18 +643,43 @@ def print_comparison(results: list[dict]):
         print(f"  │ {r['policy']:14s} │ {p0:12s} │ {p1:12s} │ {p2:12s} │ {p3:12s} │")
     print("  └────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘")
 
-    # Statistical significance
+    # ── Statistical significance — PAIRED design ──
+    # evaluate_policy() reseeds DeceptionEnv per episode index so every
+    # policy sees the IDENTICAL attacker campaign for a given `ep`.
+    # Reward samples are therefore paired (policy-A vs policy-B on the
+    # same scenario), so we use Wilcoxon signed-rank (paired) instead of
+    # Mann-Whitney U (independent). If trajectory lengths differ across
+    # policies (shouldn't, but guard), we fall back to MWU.
     print()
     if len(results) >= 2:
-        from scipy.stats import mannwhitneyu
+        from scipy.stats import wilcoxon, mannwhitneyu
         baseline = results[0]["rewards_raw"]
-        print("  Statistical Significance (Mann-Whitney U vs Random):")
+        baseline_name = results[0]["policy"]
+        print(f"  Statistical Significance (paired Wilcoxon vs {baseline_name}):")
         for r in results[1:]:
-            stat, p = mannwhitneyu(r["rewards_raw"], baseline, alternative="greater")
+            this = r["rewards_raw"]
+            sig_test, test_name = None, ""
+            if len(this) == len(baseline):
+                # paired Wilcoxon signed-rank; zero_method='zsplit' handles ties
+                try:
+                    w_stat, p = wilcoxon(
+                        this, baseline,
+                        alternative="greater", zero_method="zsplit",
+                    )
+                    sig_test, test_name = w_stat, "Wilcoxon W"
+                except ValueError:
+                    pass  # all zeros → fall through
+            if sig_test is None:
+                stat, p = mannwhitneyu(this, baseline, alternative="greater")
+                sig_test, test_name = stat, "MWU U"
             sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
-            cohen_d = (np.mean(r["rewards_raw"]) - np.mean(baseline)) / np.sqrt(
-                (np.std(r["rewards_raw"])**2 + np.std(baseline)**2) / 2)
-            print(f"    {r['policy']:14s} vs Random: U={stat:.0f}, p={p:.6f} {sig}, Cohen's d={cohen_d:.3f}")
+            # Paired Cohen's d_z = mean(diff) / sd(diff)
+            diffs = np.array(this) - np.array(baseline)
+            sd_diff = diffs.std(ddof=1) if len(diffs) > 1 else 1.0
+            cohen_dz = diffs.mean() / max(sd_diff, 1e-9)
+            print(f"    {r['policy']:14s} vs {baseline_name:8s}: "
+                  f"{test_name}={sig_test:7.1f}, p={p:.6f} {sig}, "
+                  f"paired d_z={cohen_dz:+.3f}")
 
 
 def main():

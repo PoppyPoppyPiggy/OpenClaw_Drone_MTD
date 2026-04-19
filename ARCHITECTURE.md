@@ -1,13 +1,29 @@
 # MIRAGE-UAS Technical Architecture
 
 > Internal documentation for DS Lab members and paper reviewers.
-> Last updated: 2026-04-06
+> Last structural update: 2026-04-06.
+> **2026-04-19 update**: Tier 1 GCS and Tier 2 LLM defender are now
+> deployed as Docker containers. For the current Docker deployment
+> (mirage-gcs + LLM-mode cc_honey_0N), see:
+>   - `paper/ARCHITECTURE.md`                  — current Docker layout
+>   - `paper/DOCKER_INTEGRATION_REPORT.md`     — 10-min live measurements
+>   - `docs/docker_integration_changelog.md`   — gotchas log
+>
+> The sections below describe the original (pre-Docker-LLM) design and
+> remain accurate for modules that were not changed (FCU stubs, attacker
+> simulator, MTD controller, CTI pipeline). Section 1 System Overview is
+> still valid as high-level motivation.
 
 ---
 
 ## 1. System Overview
 
 MIRAGE-UAS is a research testbed that protects real UAS (drones) by deploying **agentic honey drones** — Docker-containerized decoy instances that autonomously deceive attackers while generating a labeled cyberthreat intelligence dataset. It combines three defense layers: (1) an OpenClaw-inspired autonomous deception agent that adapts to attacker behavior in real time, (2) a Moving Target Defense controller that mutates the attack surface via Docker SDK operations, and (3) an automated STIX 2.1 CTI pipeline that produces ATT&CK-for-ICS-mapped datasets. The system targets ACM CCS 2026 Cycle B.
+
+**2026-04-19 amendment**: The "autonomous deception agent" layer has
+been extended from a rule-based OpenClawAgent to a three-tier
+architecture (GCS strategic LLM / per-drone tactical LLM / attacker-
+facing OpenClaw-SDK emulation) — see `paper/ARCHITECTURE.md`.
 
 ```
                                     MIRAGE-UAS

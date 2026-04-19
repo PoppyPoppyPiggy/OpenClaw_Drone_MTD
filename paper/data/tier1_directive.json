@@ -1,0 +1,125 @@
+{
+  "model": "llama3.1:8b",
+  "conditions": [
+    {
+      "label": "baseline_no_directive",
+      "n_calls": 8,
+      "distribution": {
+        "statustext": 0.0,
+        "flight_sim": 0.0,
+        "ghost_port": 0.75,
+        "reboot_sim": 0.0,
+        "credential_leak": 0.25
+      },
+      "counts": {
+        "ghost_port": 6,
+        "credential_leak": 2
+      },
+      "mean_latency_ms": 587.3
+    },
+    {
+      "label": "bias_statustext",
+      "n_calls": 8,
+      "distribution": {
+        "statustext": 1.0,
+        "flight_sim": 0.0,
+        "ghost_port": 0.0,
+        "reboot_sim": 0.0,
+        "credential_leak": 0.0
+      },
+      "counts": {
+        "statustext": 8
+      },
+      "mean_latency_ms": 601.1
+    },
+    {
+      "label": "bias_flight_sim",
+      "n_calls": 8,
+      "distribution": {
+        "statustext": 0.0,
+        "flight_sim": 0.125,
+        "ghost_port": 0.875,
+        "reboot_sim": 0.0,
+        "credential_leak": 0.0
+      },
+      "counts": {
+        "ghost_port": 7,
+        "flight_sim": 1
+      },
+      "mean_latency_ms": 569.6
+    },
+    {
+      "label": "bias_ghost_port",
+      "n_calls": 8,
+      "distribution": {
+        "statustext": 0.0,
+        "flight_sim": 0.0,
+        "ghost_port": 1.0,
+        "reboot_sim": 0.0,
+        "credential_leak": 0.0
+      },
+      "counts": {
+        "ghost_port": 8
+      },
+      "mean_latency_ms": 592.2
+    },
+    {
+      "label": "bias_reboot_sim",
+      "n_calls": 8,
+      "distribution": {
+        "statustext": 0.0,
+        "flight_sim": 0.0,
+        "ghost_port": 0.0,
+        "reboot_sim": 1.0,
+        "credential_leak": 0.0
+      },
+      "counts": {
+        "reboot_sim": 8
+      },
+      "mean_latency_ms": 571.4
+    },
+    {
+      "label": "bias_credential_leak",
+      "n_calls": 8,
+      "distribution": {
+        "statustext": 0.0,
+        "flight_sim": 0.0,
+        "ghost_port": 0.0,
+        "reboot_sim": 0.0,
+        "credential_leak": 1.0
+      },
+      "counts": {
+        "credential_leak": 8
+      },
+      "mean_latency_ms": 536.9
+    }
+  ],
+  "comparison": [
+    {
+      "bias_skill": "statustext",
+      "hit_rate": 1.0,
+      "kl_div_from_baseline": 13.815
+    },
+    {
+      "bias_skill": "flight_sim",
+      "hit_rate": 0.125,
+      "kl_div_from_baseline": 1.602
+    },
+    {
+      "bias_skill": "ghost_port",
+      "hit_rate": 1.0,
+      "kl_div_from_baseline": 0.288
+    },
+    {
+      "bias_skill": "reboot_sim",
+      "hit_rate": 1.0,
+      "kl_div_from_baseline": 13.815
+    },
+    {
+      "bias_skill": "credential_leak",
+      "hit_rate": 1.0,
+      "kl_div_from_baseline": 1.386
+    }
+  ],
+  "interpretation": "hit_rate > baseline + 0.2 or KL > 0.5 indicates Tier 1 directive successfully biases Tier 2 tactical choices (integration signal)."
+}

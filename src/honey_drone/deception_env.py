@@ -157,7 +157,22 @@ class DeceptionEnv:
 
         # ══════════════════════════════════════════════════════
         # Base action effectiveness matrices (5 actions × 4 phases)
-        # Calibrated from real testbed experiment data.
+        #
+        # LIMITATION — heuristic, not empirically fitted.
+        # Values seeded from qualitative reasoning over the MITRE ATT&CK
+        # phase taxonomy and honeypot-engagement literature (HoneyDrone
+        # NOMS 2018, HoneyGPT 2024), then hand-tuned so the resulting
+        # reward landscape exhibits the known sign pattern:
+        #   RECON      — low-intensity lures (statustext, flight_sim)
+        #                buy the most belief without triggering evasion
+        #   EXPLOIT    — PARAM/COMMAND abuse, fake_key pays off
+        #   PERSIST    — reboot/ghost_port disrupt foothold
+        #   EXFIL      — statustext/flight_sim erode belief
+        # This matrix is therefore best read as a controllable testbed
+        # that preserves expected qualitative structure, NOT as a
+        # measured response surface from live attackers. h-DQN policies
+        # trained against it are evaluated out-of-loop against the LLM
+        # defender on real MAVLink traffic (§5.4). See §6 Limitations.
         # ══════════════════════════════════════════════════════
 
         # [phase][action] → Δ P(real)
@@ -307,6 +322,13 @@ class DeceptionEnv:
 
         # ── 5. Compute reward ──
         reward = self._compute_reward(delta_p, engaged, s)
+        # Reward decomposition (exposed via info for L5 analysis)
+        _rc_belief = max(-1.0, min(1.0, delta_p * 8))
+        _rc_engage = 1.0 if engaged else 0.0
+        _rc_dwell = 0.3
+        _rc_safety = (
+            -0.3 * min(s.evasion_signals / 3.0, 1.0) if s.evasion_signals > 0 else 0.0
+        )
 
         # ── 6. Check termination ──
         # Terminal rewards derived from MIRAGE-UAS DES (Eq.19):
@@ -333,6 +355,12 @@ class DeceptionEnv:
             "engaged": engaged,
             "evasion": s.evasion_signals,
             "delta_p": round(delta_p, 4),
+            "reward_components": {
+                "r_belief": round(0.35 * _rc_belief, 4),
+                "r_engage": round(0.25 * _rc_engage, 4),
+                "r_dwell": round(0.25 * _rc_dwell, 4),
+                "r_safety": round(0.15 * _rc_safety, 4),
+            },
         }
 
         return self._observe(), reward, done, info

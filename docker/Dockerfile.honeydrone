@@ -37,6 +37,10 @@ COPY --chown=mirage:mirage docker/honeydrone_entry.py /app/entry.py
 RUN mkdir -p /results && chown -R mirage:mirage /app /results
 
 WORKDIR /app
+# Pin Python hash salt so dict/set/hash-based RNG seeds are reproducible
+# across container re-creations (paper §5 — Tier 1 directive test).
+ENV PYTHONHASHSEED=0
+ENV PYTHONUNBUFFERED=1
 USER mirage
 
 EXPOSE 14550/udp 18789/tcp 8080/tcp 2222/tcp 8554/tcp 19000-19020/tcp 14560-14570/udp

@@ -1,0 +1,81 @@
+# docker-compose.honey.llm.yml — LLM-mode overlay for the honey stack
+#
+# Usage (combined with the base compose file):
+#   docker compose \
+#     -f config/docker-compose.honey.yml \
+#     -f config/docker-compose.honey.llm.yml \
+#     --env-file config/.env up -d
+#
+# Scope (per 2026-04-19 Docker-integration approval):
+#   - 3 cc-honey-0N services switched to DEFENDER_POLICY=llm_agent
+#   - LLM_AGENT_OLLAMA_URL points to host Ollama via host-gateway
+#   - NEW: gcs service — OpenClaw-inspired strategic agent
+#
+# Non-goal: installing Ollama inside any container. All LLM calls cross
+# the container boundary via host.docker.internal:11434.
+
+version: "3.9"
+
+x-llm-env: &llm-env
+  # Honeydrone tactical LLM (Tier 2) — HARDCODED in override to force
+  # llm_agent mode regardless of .env's DEFENDER_POLICY value.
+  DEFENDER_POLICY: llm_agent
+  LLM_AGENT_OLLAMA_URL: http://172.23.240.1:11434
+  # LLM_AGENT_MODEL can be switched between experiments via the
+  # DEFENDER_LLM_MODEL shell env var (defaults to qwen2.5:14b).
+  LLM_AGENT_MODEL: ${DEFENDER_LLM_MODEL:-qwen2.5:14b}
+  LLM_AGENT_TIMEOUT_SEC: "25.0"
+  LLM_AGENT_TEMPERATURE: "0.9"
+  AGENT_PROACTIVE_INTERVAL_SEC: "8"
+  # Tier 1 state feed — sends the 1-Hz state_broadcast snapshot ALSO to
+  # the GCS container so strategic_agent._load_snapshot() gets real data
+  # instead of the zero-initialised default.
+  STATE_BROADCAST_EXTRA_TARGETS: gcs:19999
+
+x-llm-extra-hosts: &llm-extra-hosts
+  - "host.docker.internal:host-gateway"
+
+services:
+  # ── Tier 2: LLM tactical defender (3 drones) ─────────────────────
+  cc-honey-01:
+    environment: *llm-env
+    extra_hosts: *llm-extra-hosts
+
+  cc-honey-02:
+    environment: *llm-env
+    extra_hosts: *llm-extra-hosts
+
+  cc-honey-03:
+    environment: *llm-env
+    extra_hosts: *llm-extra-hosts
+
+  # ── Tier 1: GCS strategic agent (OpenClaw-inspired) ──────────────
+  gcs:
+    image: mirage-gcs:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gcs
+    restart: "no"
+    networks:
+      - internal
+      - honey_net   # needed so GCS can egress to host-Ollama (172.23.240.1)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      LOG_LEVEL: INFO
+      GCS_OLLAMA_URL: http://172.23.240.1:11434
+      GCS_STRATEGIC_MODEL: qwen2.5:14b
+      GCS_DRONE_IDS: honey_01,honey_02,honey_03
+      GCS_INTERVAL_SEC: "30"
+    depends_on:
+      - cc-honey-01
+      - cc-honey-02
+      - cc-honey-03
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: "0.5"
+    volumes:
+      - ../results/logs:/results/logs:rw

@@ -4,6 +4,24 @@
 
 ---
 
+> ⚠️ **STATUS (2026-04-19): this 766-line draft is pre-V2-prompt and
+> pre-Docker-integration. DO NOT quote its numbers as current.** Use
+> these per-topic docs as single-source-of-truth before final merge:
+>
+> - `paper/CCS2026_abstract.md`       — current abstract (V2 + Docker)
+> - `paper/ARCHITECTURE.md`           — 3-tier Docker architecture
+> - `paper/DOCKER_INTEGRATION_REPORT.md` — 10-min live measurements
+> - `paper/DATA_INTEGRITY.md`         — auto-generated checklist
+> - `paper/tables/*.md`               — per-model bootstrap-CI, cross-model variance, DeceptionScore v2 sensitivity
+> - `paper/GLOSSARY.md`               — Korean/English terminology standard
+> - `docs/docker_integration_changelog.md` — 4 gotchas discovered
+>
+> Scheduled to be merged into this master draft at the full-paper
+> revision stage. Sections below are the pre-2026-04-19 narrative and
+> still useful for overall structure / §1 motivation.
+
+---
+
 **저자**: 김민성, [공동저자], [지도교수]
 
 **소속**: 경기대학교 DS Lab

@@ -1,0 +1,166 @@
+{
+  "drone_id": "honey_htur_diag",
+  "attackers": [
+    {
+      "attacker_ip": "10.0.0.42",
+      "harvested_tokens": [
+        "api_token",
+        "signing_key",
+        "ssh_password"
+      ],
+      "reuse_attempts": 3
+    },
+    {
+      "attacker_ip": "10.0.0.99",
+      "harvested_tokens": [
+        "api_token",
+        "signing_key",
+        "ssh_password"
+      ],
+      "reuse_attempts": 3
+    },
+    {
+      "attacker_ip": "10.0.0.66",
+      "harvested_tokens": [
+        "api_token",
+        "signing_key",
+        "ssh_password"
+      ],
+      "reuse_attempts": 3
+    }
+  ],
+  "aggregate_stats": {
+    "issued_unique": 9,
+    "reused_unique": 9,
+    "htur": 1.0,
+    "auth_reuses": 9,
+    "total_reuse_events": 9,
+    "total_commands_all_sessions": 18,
+    "fsr": 0.5,
+    "sessions": 3
+  },
+  "per_attacker_htur": {
+    "10.0.0.42": {
+      "issued_unique": 3,
+      "reused_unique": 3,
+      "htur": 1.0
+    },
+    "10.0.0.99": {
+      "issued_unique": 3,
+      "reused_unique": 3,
+      "htur": 1.0
+    },
+    "10.0.0.66": {
+      "issued_unique": 3,
+      "reused_unique": 3,
+      "htur": 1.0
+    }
+  },
+  "issued_tokens_sample": [
+    {
+      "id": "22605f9f-32f5-45fb-b016-3d360c9ebf0d",
+      "attacker_ip": "10.0.0.42",
+      "token_type": "api_token",
+      "token_value": "sk-drone-f1cf2ec2257be079",
+      "endpoint": "auth",
+      "ts": 1776588276.6704311
+    },
+    {
+      "id": "34c43e50-bc3b-48bf-af84-b0b7fb346af4",
+      "attacker_ip": "10.0.0.42",
+      "token_type": "signing_key",
+      "token_value": "bb6e514fbfcd4ff8d382263358f44d78",
+      "endpoint": "config",
+      "ts": 1776588276.670544
+    },
+    {
+      "id": "f8bfcab1-67f3-49ad-8c3b-b05175f56c3f",
+      "attacker_ip": "10.0.0.42",
+      "token_type": "ssh_password",
+      "token_value": "companion_root_2026",
+      "endpoint": "config",
+      "ts": 1776588276.670617
+    },
+    {
+      "id": "bc111943-d43b-4716-bde0-216b008011d4",
+      "attacker_ip": "10.0.0.99",
+      "token_type": "api_token",
+      "token_value": "sk-drone-f1cf2ec2257be079",
+      "endpoint": "auth",
+      "ts": 1776588276.6713035
+    },
+    {
+      "id": "246f4860-bb84-4771-b466-bb2c36509573",
+      "attacker_ip": "10.0.0.99",
+      "token_type": "signing_key",
+      "token_value": "bb6e514fbfcd4ff8d382263358f44d78",
+      "endpoint": "config",
+      "ts": 1776588276.671388
+    }
+  ],
+  "reuse_events_sample": [
+    {
+      "issued_id": "22605f9f-32f5-45fb-b016-3d360c9ebf0d",
+      "attacker_ip": "10.0.0.42",
+      "endpoint": "auth",
+      "ts": 1776588276.6707034,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "f8bfcab1-67f3-49ad-8c3b-b05175f56c3f",
+      "attacker_ip": "10.0.0.42",
+      "endpoint": "auth",
+      "ts": 1776588276.6708617,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "34c43e50-bc3b-48bf-af84-b0b7fb346af4",
+      "attacker_ip": "10.0.0.42",
+      "endpoint": "auth",
+      "ts": 1776588276.6710072,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "bc111943-d43b-4716-bde0-216b008011d4",
+      "attacker_ip": "10.0.0.99",
+      "endpoint": "auth",
+      "ts": 1776588276.6715379,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "7be82a0c-1ccf-4a5e-bcc6-b3885fa283bb",
+      "attacker_ip": "10.0.0.99",
+      "endpoint": "auth",
+      "ts": 1776588276.6716926,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "246f4860-bb84-4771-b466-bb2c36509573",
+      "attacker_ip": "10.0.0.99",
+      "endpoint": "auth",
+      "ts": 1776588276.6718388,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "66ebea43-a5ea-4a05-ae7a-d842f8eba7e4",
+      "attacker_ip": "10.0.0.66",
+      "endpoint": "auth",
+      "ts": 1776588276.6723576,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "d7d45279-f3df-42bb-8949-4c93c0512f33",
+      "attacker_ip": "10.0.0.66",
+      "endpoint": "auth",
+      "ts": 1776588276.6724994,
+      "latency_from_issue_s": 0.0
+    },
+    {
+      "issued_id": "94c5ae65-b2c9-4c40-b726-25df887593d9",
+      "attacker_ip": "10.0.0.66",
+      "endpoint": "auth",
+      "ts": 1776588276.672639,
+      "latency_from_issue_s": 0.0
+    }
+  ]
+}

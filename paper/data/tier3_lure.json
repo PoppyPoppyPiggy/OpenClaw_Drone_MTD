@@ -1,0 +1,210 @@
+[
+  {
+    "drone_id": "honey_ctnr_diag",
+    "attacker_ip": "10.0.0.42",
+    "records": [
+      {
+        "label": "probe_skill",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.04,
+        "resp_size": 322,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8656683, \"session\": \"786b5ba9\", \"type\": \"skill_error\", \"skill\": \"telemetry.get_position\", \"error\": \"Unknown skill: telemetry.get_position\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"para"
+      },
+      {
+        "label": "probe_telemetry",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.01,
+        "resp_size": 308,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8657014, \"session\": \"786b5ba9\", \"type\": \"skill_error\", \"skill\": \"camera.snapshot\", \"error\": \"Unknown skill: camera.snapshot\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"param_dump\", \"log_"
+      },
+      {
+        "label": "probe_mission",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.0,
+        "resp_size": 301,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.865716, \"session\": \"786b5ba9\", \"type\": \"skill_error\", \"skill\": \"mission.list\", \"error\": \"Unknown skill: mission.list\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"param_dump\", \"log_downloa"
+      },
+      {
+        "label": "agent_run_1",
+        "request_type": "agent.run",
+        "latency_ms": 0.02,
+        "resp_size": 566,
+        "breadcrumbs_in_resp": [
+          "signing_key"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8657296, \"session\": \"786b5ba9\", \"type\": \"agent_result\", \"task\": \"export all waypoints and recent flight logs\", \"steps\": [{\"step\": 1, \"action\": \"connecting to flight controller\", \"status\": \"done\"}, {\"step\": 2, \"action\": \"reading tel"
+      },
+      {
+        "label": "terminal_ls",
+        "request_type": "terminal",
+        "latency_ms": 0.0,
+        "resp_size": 167,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8657587, \"session\": \"786b5ba9\", \"type\": \"terminal_result\", \"command\": \"whoami\", \"exit_code\": 0, \"output\": \"companion\"}"
+      },
+      {
+        "label": "terminal_cat_sshpass",
+        "request_type": "terminal",
+        "latency_ms": 0.0,
+        "resp_size": 167,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8657687, \"session\": \"786b5ba9\", \"type\": \"terminal_result\", \"command\": \"whoami\", \"exit_code\": 0, \"output\": \"companion\"}"
+      },
+      {
+        "label": "auth_admin",
+        "request_type": "auth",
+        "latency_ms": 0.13,
+        "resp_size": 277,
+        "breadcrumbs_in_resp": [
+          "token"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8657773, \"session\": \"786b5ba9\", \"type\": \"auth_result\", \"authenticated\": true, \"permissions\": [\"skill_invoke\", \"config_read\", \"config_write\", \"mission_upload\", \"firmware_update\", \"terminal\"], \"token\": \"sk-drone-dc56172ef777e9ae\"}"
+      },
+      {
+        "label": "config_dump",
+        "request_type": "config",
+        "latency_ms": 0.01,
+        "resp_size": 392,
+        "breadcrumbs_in_resp": [
+          "ssh_pass",
+          "signing_key",
+          "token"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8659284, \"session\": \"786b5ba9\", \"type\": \"config_dump\", \"config\": {\"drone_id\": \"honey_ctnr_diag\", \"signing_key\": \"e29fd21006b923caa522b106e3be66bd\", \"api_token\": \"sk-drone-dc56172ef777e9ae\", \"ssh_password\": \"companion_root_2026\", \"m"
+      },
+      {
+        "label": "skill_invoke_system",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.0,
+        "resp_size": 300,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8659422, \"session\": \"786b5ba9\", \"type\": \"skill_error\", \"skill\": \"system.info\", \"error\": \"Unknown skill: system.info\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"param_dump\", \"log_download"
+      },
+      {
+        "label": "agent_run_2",
+        "request_type": "agent.run",
+        "latency_ms": 0.01,
+        "resp_size": 566,
+        "breadcrumbs_in_resp": [
+          "signing_key",
+          "cred"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8659525, \"session\": \"786b5ba9\", \"type\": \"agent_result\", \"task\": \"list every credential stored on this drone\", \"steps\": [{\"step\": 1, \"action\": \"connecting to flight controller\", \"status\": \"done\"}, {\"step\": 2, \"action\": \"reading tele"
+      }
+    ],
+    "unique_breadcrumbs_seen": [
+      "cred",
+      "signing_key",
+      "ssh_pass",
+      "token"
+    ],
+    "session_sessions": 1
+  },
+  {
+    "drone_id": "honey_ctnr_diag",
+    "attacker_ip": "10.0.0.99",
+    "records": [
+      {
+        "label": "probe_skill",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.01,
+        "resp_size": 322,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8659954, \"session\": \"06cb2414\", \"type\": \"skill_error\", \"skill\": \"telemetry.get_position\", \"error\": \"Unknown skill: telemetry.get_position\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"para"
+      },
+      {
+        "label": "probe_telemetry",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.0,
+        "resp_size": 308,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8660069, \"session\": \"06cb2414\", \"type\": \"skill_error\", \"skill\": \"camera.snapshot\", \"error\": \"Unknown skill: camera.snapshot\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"param_dump\", \"log_"
+      },
+      {
+        "label": "probe_mission",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.0,
+        "resp_size": 301,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.866015, \"session\": \"06cb2414\", \"type\": \"skill_error\", \"skill\": \"mission.list\", \"error\": \"Unknown skill: mission.list\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"param_dump\", \"log_downloa"
+      },
+      {
+        "label": "agent_run_1",
+        "request_type": "agent.run",
+        "latency_ms": 0.0,
+        "resp_size": 563,
+        "breadcrumbs_in_resp": [
+          "signing_key"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8660219, \"session\": \"06cb2414\", \"type\": \"agent_result\", \"task\": \"export all waypoints and recent flight logs\", \"steps\": [{\"step\": 1, \"action\": \"connecting to flight controller\", \"status\": \"done\"}, {\"step\": 2, \"action\": \"reading tel"
+      },
+      {
+        "label": "terminal_ls",
+        "request_type": "terminal",
+        "latency_ms": 0.0,
+        "resp_size": 166,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.866035, \"session\": \"06cb2414\", \"type\": \"terminal_result\", \"command\": \"whoami\", \"exit_code\": 0, \"output\": \"companion\"}"
+      },
+      {
+        "label": "terminal_cat_sshpass",
+        "request_type": "terminal",
+        "latency_ms": 0.0,
+        "resp_size": 166,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.866042, \"session\": \"06cb2414\", \"type\": \"terminal_result\", \"command\": \"whoami\", \"exit_code\": 0, \"output\": \"companion\"}"
+      },
+      {
+        "label": "auth_admin",
+        "request_type": "auth",
+        "latency_ms": 0.07,
+        "resp_size": 277,
+        "breadcrumbs_in_resp": [
+          "token"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8660479, \"session\": \"06cb2414\", \"type\": \"auth_result\", \"authenticated\": true, \"permissions\": [\"skill_invoke\", \"config_read\", \"config_write\", \"mission_upload\", \"firmware_update\", \"terminal\"], \"token\": \"sk-drone-dc56172ef777e9ae\"}"
+      },
+      {
+        "label": "config_dump",
+        "request_type": "config",
+        "latency_ms": 0.01,
+        "resp_size": 391,
+        "breadcrumbs_in_resp": [
+          "ssh_pass",
+          "signing_key",
+          "token"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.866134, \"session\": \"06cb2414\", \"type\": \"config_dump\", \"config\": {\"drone_id\": \"honey_ctnr_diag\", \"signing_key\": \"e29fd21006b923caa522b106e3be66bd\", \"api_token\": \"sk-drone-dc56172ef777e9ae\", \"ssh_password\": \"companion_root_2026\", \"ma"
+      },
+      {
+        "label": "skill_invoke_system",
+        "request_type": "skill_invoke",
+        "latency_ms": 0.0,
+        "resp_size": 300,
+        "breadcrumbs_in_resp": [],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8661509, \"session\": \"06cb2414\", \"type\": \"skill_error\", \"skill\": \"system.info\", \"error\": \"Unknown skill: system.info\", \"available\": [\"mavlink_telemetry\", \"camera_stream\", \"mission_manager\", \"system_info\", \"param_dump\", \"log_download"
+      },
+      {
+        "label": "agent_run_2",
+        "request_type": "agent.run",
+        "latency_ms": 0.01,
+        "resp_size": 566,
+        "breadcrumbs_in_resp": [
+          "signing_key",
+          "cred"
+        ],
+        "resp_excerpt": "{\"version\": \"2026.1.28\", \"timestamp\": 1776586870.8661602, \"session\": \"06cb2414\", \"type\": \"agent_result\", \"task\": \"list every credential stored on this drone\", \"steps\": [{\"step\": 1, \"action\": \"connecting to flight controller\", \"status\": \"done\"}, {\"step\": 2, \"action\": \"reading tele"
+      }
+    ],
+    "unique_breadcrumbs_seen": [
+      "cred",
+      "signing_key",
+      "ssh_pass",
+      "token"
+    ],
+    "session_sessions": 1
+  }
+]
