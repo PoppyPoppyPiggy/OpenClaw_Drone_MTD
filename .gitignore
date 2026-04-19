@@ -9,5 +9,5 @@ dist/
 build/
 .DS_Store
 *.log
-papers/
+papers/data/
 .venv/

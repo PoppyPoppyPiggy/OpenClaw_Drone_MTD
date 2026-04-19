@@ -1,103 +1,91 @@
 [
   {
-    "timestamp": 1776614661.0617986,
-    "drone_id": "honey_02",
-    "level": "L3_ADVANCED",
-    "urgency": 0.75,
+    "timestamp": 1776614609.5302813,
+    "drone_id": "honey_01",
+    "level": "L1_BASIC",
+    "urgency": 0.3,
     "actions": [
-      "ip_shuffle",
-      "proto_change",
-      "key_rotate",
-      "service_migrate"
+      "port_rotate",
+      "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
-    "action_type": "ip_shuffle",
-    "latency_ms": 330.3,
+    "action_type": "port_rotate",
+    "latency_ms": 123.7,
     "executed": true
   },
   {
-    "timestamp": 1776614661.7665884,
-    "drone_id": "honey_02",
-    "level": "L3_ADVANCED",
-    "urgency": 0.75,
+    "timestamp": 1776614611.9871318,
+    "drone_id": "honey_01",
+    "level": "L1_BASIC",
+    "urgency": 0.3,
     "actions": [
-      "ip_shuffle",
-      "proto_change",
-      "key_rotate",
-      "service_migrate"
+      "port_rotate",
+      "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
-    "action_type": "ip_shuffle",
-    "latency_ms": 317.4,
+    "action_type": "port_rotate",
+    "latency_ms": 189.1,
     "executed": true
   },
   {
-    "timestamp": 1776614662.1475286,
-    "drone_id": "honey_02",
-    "level": "L3_ADVANCED",
-    "urgency": 0.75,
+    "timestamp": 1776614614.332567,
+    "drone_id": "honey_01",
+    "level": "L1_BASIC",
+    "urgency": 0.3,
     "actions": [
-      "ip_shuffle",
-      "proto_change",
-      "key_rotate",
-      "service_migrate"
+      "port_rotate",
+      "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
-    "action_type": "ip_shuffle",
-    "latency_ms": 255.3,
+    "action_type": "port_rotate",
+    "latency_ms": 102.6,
     "executed": true
   },
   {
-    "timestamp": 1776614662.464684,
-    "drone_id": "honey_02",
-    "level": "L3_ADVANCED",
-    "urgency": 0.75,
+    "timestamp": 1776614616.7654352,
+    "drone_id": "honey_01",
+    "level": "L1_BASIC",
+    "urgency": 0.3,
     "actions": [
-      "ip_shuffle",
-      "proto_change",
-      "key_rotate",
-      "service_migrate"
+      "port_rotate",
+      "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
-    "action_type": "ip_shuffle",
-    "latency_ms": 124.3,
+    "action_type": "port_rotate",
+    "latency_ms": 262.8,
     "executed": true
   },
   {
-    "timestamp": 1776614662.871588,
-    "drone_id": "honey_02",
-    "level": "L3_ADVANCED",
-    "urgency": 0.75,
+    "timestamp": 1776614620.2435944,
+    "drone_id": "honey_01",
+    "level": "L1_BASIC",
+    "urgency": 0.3,
     "actions": [
-      "ip_shuffle",
-      "proto_change",
-      "key_rotate",
-      "service_migrate"
+      "port_rotate",
+      "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
-    "action_type": "ip_shuffle",
-    "latency_ms": 189.9,
+    "action_type": "port_rotate",
+    "latency_ms": 126.0,
     "executed": true
   },
   {
-    "timestamp": 1776614663.2002163,
-    "drone_id": "honey_02",
-    "level": "L3_ADVANCED",
-    "urgency": 0.75,
+    "timestamp": 1776614623.1457806,
+    "drone_id": "honey_01",
+    "level": "L1_BASIC",
+    "urgency": 0.3,
     "actions": [
-      "ip_shuffle",
-      "proto_change",
-      "key_rotate",
-      "service_migrate"
+      "port_rotate",
+      "ip_shuffle"
     ],
     "execution_time_ms": 0.0,
-    "action_type": "ip_shuffle",
-    "latency_ms": 122.7,
+    "action_type": "port_rotate",
+    "latency_ms": 106.1,
     "executed": true
   },
   {
-    "timestamp": 1776614663.2038367,
-    "drone_id": "honey_02",
+    "timestamp": 1776614659.8536549,
+    "drone_id": "honey_01",
     "level": "L3_ADVANCED",
     "urgency": 0.75,
     "actions": [
@@ -108,12 +96,12 @@
     ],
     "execution_time_ms": 0.0,
     "action_type": "ip_shuffle",
-    "latency_ms": 252.3,
+    "latency_ms": 120.8,
     "executed": true
   },
   {
-    "timestamp": 1776614710.6086786,
-    "drone_id": "honey_02",
+    "timestamp": 1776614660.4462142,
+    "drone_id": "honey_01",
     "level": "L3_ADVANCED",
     "urgency": 0.75,
     "actions": [
@@ -124,7 +112,967 @@
     ],
     "execution_time_ms": 0.0,
     "action_type": "ip_shuffle",
-    "latency_ms": 93.7,
+    "latency_ms": 179.7,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614660.7809439,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 317.1,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614661.0918677,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 267.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614661.4145172,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 283.8,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614661.7567914,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 197.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614661.7597873,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 255.0,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614670.733941,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 159.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614671.2904568,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 135.1,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614671.6912844,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 283.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614672.0657969,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 325.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614672.4815145,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 136.0,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614672.8764043,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 347.9,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614672.8810961,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 159.3,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614709.054681,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 179.4,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614713.886798,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 128.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614717.0946739,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 126.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614719.7322252,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 349.5,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614719.5546665,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 130.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614721.9653375,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.01,
+    "action_type": "ip_shuffle",
+    "latency_ms": 268.0,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614724.5157459,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 345.0,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614727.136771,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 207.0,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614730.5813897,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 108.8,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614733.2608485,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.01,
+    "action_type": "ip_shuffle",
+    "latency_ms": 95.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614767.8681803,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 272.8,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614768.540822,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 124.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614768.921887,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 205.7,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614769.263948,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 105.0,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614769.5794914,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 135.5,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614769.9188883,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 245.7,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614769.92223,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 301.7,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614779.0312128,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 112.4,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614779.7192092,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 104.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614780.0423553,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 336.3,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614780.443759,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 179.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614780.8476202,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 131.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614781.1736252,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 316.1,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614781.176174,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 84.1,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614821.7943397,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 205.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614826.9682224,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 245.4,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614830.235822,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 111.8,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614833.0084734,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 179.8,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614835.7093754,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 104.7,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614838.1339102,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 128.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614837.5322797,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 294.6,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614839.853469,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 124.0,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614842.988713,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 128.4,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614845.527737,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 242.9,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614865.6587684,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 195.2,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614866.4512148,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 147.5,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614866.7895818,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 250.9,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614867.100081,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 222.5,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614867.428649,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 121.9,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614867.783015,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 289.1,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614867.7860055,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 220.9,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614878.0127432,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 85.3,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614878.6134043,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 277.4,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614878.9979444,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 240.8,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614879.3137953,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 171.3,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614879.6530378,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 324.3,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614880.0111349,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 170.7,
+    "executed": true
+  },
+  {
+    "timestamp": 1776614880.0142827,
+    "drone_id": "honey_01",
+    "level": "L3_ADVANCED",
+    "urgency": 0.75,
+    "actions": [
+      "ip_shuffle",
+      "proto_change",
+      "key_rotate",
+      "service_migrate"
+    ],
+    "execution_time_ms": 0.0,
+    "action_type": "ip_shuffle",
+    "latency_ms": 149.6,
     "executed": true
   }
 ]
